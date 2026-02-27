@@ -1468,21 +1468,7 @@ const launchApp = () => {
             window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
             
             setupFloatingSearch();
-        };
-        <!-- AI Modal -->
-<div id="ai-modal" class="floating-search" style="display:none; flex-direction: column; width: 500px; height: 300px;">
-    <div class="floating-iframe-header">
-        <span class="floating-title">🤖 Chimera AI</span>
-        <button id="ai-close-btn" class="floating-close-btn">✕</button>
-    </div>
-    <div style="flex:1; display:flex; flex-direction: column; padding: 12px; gap:8px; background:#1e1e1e; border-top:1px solid #4a4a4a; border-radius:0 0 12px 12px;">
-        <textarea id="ai-user-input" placeholder="Ask Chimera something joyful!" style="flex:1; resize:none; padding:10px; border-radius:8px; border:none; background:#2a2a2a; color:#fff;"></textarea>
-        <button id="ai-ask-btn" style="padding:10px 15px; border:none; border-radius:8px; background:linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%); color:#fff; font-weight:600; cursor:pointer;">Ask Chimera</button>
-        <p id="ai-response" style="color:#00bcd4; margin:0;"></p>
-    </div>
-</div>
         window.addEventListener('load', init);
-        <script type="module" src="chimera-ai.js"></script>
     </script>
 </body>
 </html>
