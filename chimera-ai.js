@@ -3,7 +3,7 @@
 // ────────────────────────────────────────────────
 
 const CHIMERA_API_KEY = ''; // <-- Paste your Groq AI API key here
-const CHIMERA_API_URL = 'https://api.groq.ai/v1/generate'; // Example endpoint
+const CHIMERA_API_URL = ''; // Example endpoint
 
 // DOM Elements
 const userInput = document.getElementById('userInput');
