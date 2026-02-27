@@ -556,14 +556,29 @@
     </style>
     
     <script src="https://unpkg.com/@tensorflow/tfjs"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
     <!-- START PAGE VIEW -->
     <div id="start-page">
         <h1>Chimera</h1>
-        <p>Notes. But Better.</p>
-        <button id="btn-launch-app">Launch App</button>
-    </div>
+<p>Notes. But Better.</p>
+
+<div id="g_id_onload"
+    data-client_id="YOUR_GOOGLE_CLIENT_ID_HERE"
+    data-callback="handleCredentialResponse"
+    data-auto_prompt="false">
+</div>
+
+<div class="g_id_signin"
+    data-type="standard"
+    data-theme="filled_black"
+    data-size="large"
+    data-shape="pill">
+</div>
+
+<button id="btn-launch-app" style="display:none;">Launch App</button>
+</div>
 
     <!-- MAIN APPLICATION CONTAINER (hidden until launched) -->
     <div id="app-container">
@@ -685,6 +700,14 @@
     </div>
 
     <script type="module">
+        window.handleCredentialResponse = (response) => {
+    const user = JSON.parse(atob(response.credential.split('.')[1]));
+    console.log("User:", user);
+
+    localStorage.setItem("chimeraUser", JSON.stringify(user));
+
+    document.getElementById("btn-launch-app").style.display = "inline-block";
+};
         let currentNoteId = null;
         let notesData = [];
         const dbName = 'ChimeraDB';
@@ -1182,11 +1205,16 @@
         // ────────────────────────────────────────────────
         // APP FLOW CONTROL
         // ────────────────────────────────────────────────
-        const launchApp = () => {
-            document.getElementById('start-page').style.display = 'none';
-            document.getElementById('app-container').style.display = 'grid';
-            loadAllNotes();
-        };
+const launchApp = () => {
+    if (!localStorage.getItem("chimeraUser")) {
+        alert("Sign in first.");
+        return;
+    }
+
+    document.getElementById('start-page').style.display = 'none';
+    document.getElementById('app-container').style.display = 'grid';
+    loadAllNotes();
+};
 
         // ────────────────────────────────────────────────
         // FLOATING SEARCH BAR - IFRAME SNUB BROWSER
