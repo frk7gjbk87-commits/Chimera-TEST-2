@@ -556,6 +556,29 @@
     </style>
     
     <script src="https://unpkg.com/@tensorflow/tfjs"></script>
+    <script>
+  window.handleCredentialResponse = (response) => {
+    try {
+      // Decode the credential
+      const user = JSON.parse(atob(response.credential.split('.')[1]));
+      console.log("User:", user);
+
+      // Store user in localStorage
+      localStorage.setItem("chimeraUser", JSON.stringify(user));
+
+      // Immediately launch the app
+      document.getElementById('start-page').style.display = 'none';
+      document.getElementById('app-container').style.display = 'grid';
+
+      // Load all notes after login
+      loadAllNotes(); 
+    } catch (e) {
+      console.error("Google Sign-In parsing failed:", e);
+    }
+  };
+</script>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -576,8 +599,7 @@
     data-size="large"
     data-shape="pill">
 </div>
-
-<button id="btn-launch-app" style="display:none;">Launch App</button>
+        
 </div>
 
     <!-- MAIN APPLICATION CONTAINER (hidden until launched) -->
@@ -697,14 +719,6 @@
     </div>
 
     <script type="module">
-        window.handleCredentialResponse = (response) => {
-    const user = JSON.parse(atob(response.credential.split('.')[1]));
-    console.log("User:", user);
-
-    localStorage.setItem("chimeraUser", JSON.stringify(user));
-
-    document.getElementById("btn-launch-app").style.display = "inline-block";
-};
         let currentNoteId = null;
         let notesData = [];
         const dbName = 'ChimeraDB';
@@ -1423,7 +1437,6 @@ const launchApp = () => {
                 setupResizer();
             }
 
-            document.getElementById('btn-launch-app').onclick = launchApp;
             document.getElementById('btn-new-note').onclick = newNote;
             document.getElementById('btn-delete-note').onclick = deleteCurrentNote;
             
