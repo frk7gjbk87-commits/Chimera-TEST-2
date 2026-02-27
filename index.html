@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <link rel="stylesheet" href="chimera-ai.css">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chimera - Notes</title>
@@ -628,6 +629,8 @@
                 <button id="btn-file-access">Local Folder</button>
                 <button id="btn-collab">P2P Share</button>
                 <button id="btn-open-ai">🤖 Chimera AI</button>
+                <button onclick="openAiTerminal()">AI Console</button>
+
             </div>
             <div class="toolbar">
                 <button id="btn-wasm-load">Load Wasm Core</button>
@@ -1470,5 +1473,20 @@ const launchApp = () => {
             setupFloatingSearch();
         window.addEventListener('load', init);
     </script>
+    <script type="module">
+  import {
+    handleGoogleCredential,
+    initAiTerminal,
+    openAiTerminal,
+    saveNoteToCloud,
+    loadNotesFromCloud
+  } from "./chimera-frontend.js";
+
+  window.handleCredentialResponse = (res) =>
+    handleGoogleCredential(res.credential);
+
+  initAiTerminal();
+</script>
+
 </body>
 </html>
