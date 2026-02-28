@@ -1775,11 +1775,24 @@
         // ────────────────────────────────────────────────
         // P2P COLLABORATION (WebRTC)
         // ────────────────────────────────────────────────
-        const startP2P = () => {
+        const startP2P = async () => {
             if (!requireProAccess('Collaboration is available on Chimera Pro.')) {
                 return;
             }
-            console.log('P2P collaboration started');
+
+            if (!currentNoteId) {
+                window.alert('Open a note first, then use P2P Share.');
+                return;
+            }
+
+            const activeNote = await getNoteFromDB(currentNoteId);
+            const activeTitle = String(activeNote?.title || 'Untitled Note');
+
+            window.alert(
+                `P2P Share is currently in beta for "${activeTitle}".\n\n` +
+                `The live sync transport is not fully wired yet, so collaboration is not active right now.`
+            );
+            console.log('P2P collaboration requested for note:', activeTitle);
         };
 
         const exportCurrentNote = async () => {
