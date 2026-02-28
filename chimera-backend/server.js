@@ -32,6 +32,10 @@ const FREE_MAX_STORAGE_BYTES = Math.max(
   1024,
   Number(process.env.FREE_MAX_STORAGE_BYTES || DEFAULT_FREE_MAX_STORAGE_BYTES)
 );
+const PRO_INVITE_CODE = String(process.env.PRO_INVITE_CODE || "").trim();
+const PRO_SUPPORT_EMAIL = String(
+  process.env.PRO_SUPPORT_EMAIL || "aaravkedeveloper@gmail.com"
+).trim();
 const corsOrigins = (process.env.CORS_ORIGIN || "*")
   .split(",")
   .map((origin) => origin.trim())
@@ -122,6 +126,10 @@ function getPlanLimits(plan) {
 
 function countNoteChars(note) {
   return String(note?.content || "").length;
+}
+
+function normalizeInviteCode(value) {
+  return String(value || "").trim().toUpperCase();
 }
 
 function estimateNoteBytes(note) {
@@ -432,7 +440,8 @@ app.post("/auth/google", ensureDb, async (req, res) => {
       user: { ...user, plan },
       token: credential,
       plan,
-      limits
+      limits,
+      supportEmail: PRO_SUPPORT_EMAIL
     });
   } catch (err) {
     res.status(401).json({ error: "Invalid credential" });
@@ -443,11 +452,33 @@ app.get("/billing/status", ensureDb, auth, async (req, res) => {
   const plan = normalizePlan(req.user.plan);
   res.json({
     plan,
-    limits: getPlanLimits(plan)
+    limits: getPlanLimits(plan),
+    supportEmail: PRO_SUPPORT_EMAIL
   });
 });
 
 app.post("/billing/upgrade", ensureDb, auth, async (req, res) => {
+  const submittedCode = normalizeInviteCode(req.body?.code);
+  const expectedCode = normalizeInviteCode(PRO_INVITE_CODE);
+
+  if (!expectedCode) {
+    return res.status(503).json({
+      error: "Invite code redemption is not configured on the server yet."
+    });
+  }
+
+  if (!submittedCode) {
+    return res.status(400).json({
+      error: "Missing invite code."
+    });
+  }
+
+  if (submittedCode !== expectedCode) {
+    return res.status(403).json({
+      error: `Invalid code. Email ${PRO_SUPPORT_EMAIL} to request access.`
+    });
+  }
+
   const nowIso = new Date().toISOString();
   await db.collection("users").updateOne(
     { userId: req.user.userId },
@@ -466,7 +497,8 @@ app.post("/billing/upgrade", ensureDb, auth, async (req, res) => {
   res.json({
     ok: true,
     plan: "pro",
-    limits: getPlanLimits("pro")
+    limits: getPlanLimits("pro"),
+    supportEmail: PRO_SUPPORT_EMAIL
   });
 });
 

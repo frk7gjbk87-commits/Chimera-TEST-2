@@ -10,6 +10,7 @@ export let chimeraUser = null;
 export let chimeraToken = null;
 export let chimeraPlan = "free";
 export let chimeraLimits = null;
+export let chimeraSupportEmail = "aaravkedeveloper@gmail.com";
 
 const backendBaseUrl =
   window.CHIMERA_BACKEND_URL ||
@@ -34,6 +35,19 @@ function setPlanState(plan, limits = null) {
   window.dispatchEvent(
     new CustomEvent("chimera-plan-updated", {
       detail: { plan: chimeraPlan, limits: chimeraLimits }
+    })
+  );
+}
+
+function setSupportEmail(email) {
+  const value = String(email || "").trim();
+  if (!value) {
+    return;
+  }
+  chimeraSupportEmail = value;
+  window.dispatchEvent(
+    new CustomEvent("chimera-support-email-updated", {
+      detail: { supportEmail: chimeraSupportEmail }
     })
   );
 }
@@ -279,6 +293,7 @@ export async function handleGoogleCredential(credential) {
   let cloudNotes = [];
   let authPlan = "free";
   let authLimits = null;
+  let authSupportEmail = chimeraSupportEmail;
 
   try {
     const res = await fetch(`${backendBaseUrl}/auth/google`, {
@@ -293,6 +308,7 @@ export async function handleGoogleCredential(credential) {
       chimeraToken = data.token || chimeraToken;
       authPlan = data.plan || data.user?.plan || "free";
       authLimits = data.limits || null;
+      authSupportEmail = data.supportEmail || chimeraSupportEmail;
       if (chimeraUser) {
         localStorage.setItem("chimeraUser", JSON.stringify(chimeraUser));
       }
@@ -305,6 +321,7 @@ export async function handleGoogleCredential(credential) {
   }
 
   setPlanState(authPlan, authLimits);
+  setSupportEmail(authSupportEmail);
 
   try {
     cloudNotes = await loadNotesFromCloud();
@@ -318,7 +335,8 @@ export async function handleGoogleCredential(credential) {
         user: chimeraUser,
         notes: cloudNotes,
         plan: chimeraPlan,
-        limits: chimeraLimits
+        limits: chimeraLimits,
+        supportEmail: chimeraSupportEmail
       }
     })
   );
@@ -395,9 +413,14 @@ export function isProUser() {
   return normalizePlan(chimeraPlan) === "pro";
 }
 
-export async function upgradeToPro() {
+export async function upgradeToPro(code) {
   if (!chimeraToken) {
     throw new Error("Sign in first.");
+  }
+
+  const normalizedCode = String(code || "").trim();
+  if (!normalizedCode) {
+    throw new Error("Enter your Pro code.");
   }
 
   const res = await fetch(`${backendBaseUrl}/billing/upgrade`, {
@@ -405,7 +428,8 @@ export async function upgradeToPro() {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${chimeraToken}`
-    }
+    },
+    body: JSON.stringify({ code: normalizedCode })
   });
 
   const data = await extractErrorPayload(res);
@@ -414,9 +438,11 @@ export async function upgradeToPro() {
   }
 
   setPlanState(data.plan, data.limits);
+  setSupportEmail(data.supportEmail);
   return {
     plan: chimeraPlan,
-    limits: chimeraLimits
+    limits: chimeraLimits,
+    supportEmail: chimeraSupportEmail
   };
 }
 
