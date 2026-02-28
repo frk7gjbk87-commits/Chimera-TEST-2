@@ -1,0 +1,1873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="chimera-ai.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chimera - Notes</title>
+    
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #ffffff;
+            --sidebar-bg: #1e1e1e;
+            --accent-color: #ffffff;
+            --accent-hover: #cdcaca;
+            --border-color: #ffffff;
+            --editor-bg: #1f1f1f;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        /* --- START PAGE STYLES --- */
+        #start-page {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            text-align: center;
+            background: linear-gradient(135deg, var(--bg-color) 0%, #0a0a0a 100%);
+            padding: 20px;
+            z-index: 1;
+        }
+        
+        #start-page h1 {
+            font-size: 4em;
+            color: var(--accent-color);
+            margin-bottom: 0.2em;
+            text-shadow: 0 0 15px rgba(133, 133, 133, 0.5);
+        }
+        
+        #start-page p {
+            font-size: 1.2em;
+            color: #ccc;
+            margin-bottom: 2em;
+            max-width: 600px;
+        }
+        
+        #btn-launch-app {
+            padding: 15px 30px;
+            font-size: 1.2em;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        #btn-launch-app:hover {
+             box-shadow: 0 0 20px var(--accent-color);
+        }
+
+        /* --- MAIN APP LAYOUT (GRID) --- */
+        #app-container {
+            display: none; /* Hidden by default */
+            grid-template-columns: 280px 1fr;
+            height: 100%;
+        }
+
+        .sidebar {
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 15px;
+            overflow-y: auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        button, input[type="search"], select {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: var(--accent-color);
+            color: #121212;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+            transform: translateY(-1px);
+        }
+
+        .folder-toolbar {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 14px;
+        }
+
+        #folder-filter, #note-folder {
+            border: 1px solid var(--border-color);
+        }
+
+        .folder-label {
+            font-size: 12px;
+            color: #bac6d1;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .folder-label-inline {
+            font-size: 12px;
+            color: #bac6d1;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
+
+        #note-list div {
+            padding: 10px;
+            border-bottom: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: background-color 0.1s;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #note-list div:hover, #note-list .active {
+            background-color: var(--editor-bg);
+        }
+
+        .editor-view {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .editor-toolbar {
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        #note-title {
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            background-color: var(--editor-bg);
+            color: var(--text-color);
+            border-radius: 4px;
+        }
+
+        /* --- Resizing Container for Editor/Preview --- */
+        #editor-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #note-editor {
+            flex-basis: 50%;
+            padding: 20px;
+            border: none;
+            resize: none;
+            background-color: var(--editor-bg);
+            color: var(--text-color);
+            font-size: 16px;
+            outline: none;
+            line-height: 1.6;
+            overflow-y: auto;
+        }
+
+        #resizer {
+            width: 8px;
+            cursor: col-resize;
+            background-color: var(--sidebar-bg);
+            border-left: 1px solid var(--border-color);
+            flex-shrink: 0;
+            transition: background-color 0.2s;
+        }
+        
+        #resizer:hover, #resizer.is-dragging {
+            background-color: var(--accent-hover);
+        }
+
+        #note-preview {
+            flex-basis: 50%;
+            padding: 20px;
+            border-left: 1px solid var(--border-color);
+            overflow-y: auto;
+            background-color: var(--editor-bg);
+        }
+
+        #graph-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-color);
+            display: none;
+            z-index: 5;
+        }
+
+        /* Floating Search Bar */
+        .floating-search {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            background: #3a3a3a;
+            border-radius: 50px;
+            padding: 12px 16px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+            border: 1px solid #4a4a4a;
+            z-index: 999;
+            transition: all 0.3s ease;
+            width: 450px;
+            height: 48px;
+        }
+
+        .floating-search.dragging {
+            cursor: grabbing;
+        }
+
+        .floating-search.expanded {
+            width: 550px;
+        }
+
+        .floating-search.searching {
+            width: 80vw;
+            height: 80vh;
+            min-width: 200px;
+            min-height: 150px;
+            padding: 0;
+            border-radius: 12px;
+            flex-direction: column;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            overflow: hidden;
+        }
+
+        .floating-drag-handle {
+            background: none;
+            border: none;
+            color: #9a9a9a;
+            font-size: 18px;
+            cursor: grab;
+            padding: 4px 8px;
+            margin-right: 8px;
+            transition: color 0.2s;
+            flex-shrink: 0;
+        }
+
+        .floating-drag-handle:hover {
+            color: var(--accent-color);
+        }
+
+        .floating-search.searching .floating-drag-handle {
+            display: none;
+        }
+
+        #floating-search-input {
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-color);
+            font-size: 14px;
+            width: 100%;
+            transition: width 0.3s ease;
+            margin-left: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            cursor: text;
+        }
+
+        #floating-search-input::placeholder {
+            color: #999;
+        }
+
+        .floating-search.searching #floating-search-input {
+            display: none;
+        }
+
+        .floating-search-btn {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 0;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            margin-left: 8px;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        .floating-search-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.5);
+        }
+
+        .floating-search.searching .floating-search-btn {
+            display: none;
+        }
+
+        .floating-iframe-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .floating-iframe-header {
+            padding: 12px 16px;
+            background: #2a2a2a;
+            border-bottom: 1px solid #4a4a4a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .floating-title {
+            color: #999;
+            font-size: 14px;
+            flex: 1;
+        }
+
+        .floating-iframe-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .floating-js-toggle {
+            border: 1px solid #5a7690;
+            background: #1b4258;
+            color: #d9f5ff;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .floating-js-toggle:hover {
+            background: #235a79;
+        }
+
+        .floating-js-toggle.off {
+            border-color: #6d6d6d;
+            background: #333;
+            color: #ddd;
+        }
+
+        .floating-close-btn {
+            background: #4a4a4a;
+            border: none;
+            color: white;
+            font-size: 18px;
+            width: 32px;
+            height: 32px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .floating-close-btn:hover {
+            background: #5a5a5a;
+        }
+
+        .floating-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            flex: 1;
+        }
+
+        .resize-handle {
+            position: absolute;
+            background: transparent;
+        }
+
+        .resize-top,
+        .resize-bottom {
+            left: 0;
+            right: 0;
+            height: 4px;
+            cursor: ns-resize;
+        }
+
+        .resize-top {
+            top: 0;
+        }
+
+        .resize-bottom {
+            bottom: 0;
+        }
+
+        .resize-left,
+        .resize-right {
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            cursor: ew-resize;
+        }
+
+        .resize-left {
+            left: 0;
+        }
+
+        .resize-right {
+            right: 0;
+        }
+
+        .resize-top-left {
+            top: 0;
+            left: 0;
+            width: 8px;
+            height: 8px;
+            cursor: nwse-resize;
+        }
+
+        .resize-top-right {
+            top: 0;
+            right: 0;
+            width: 8px;
+            height: 8px;
+            cursor: nesw-resize;
+        }
+
+        .resize-bottom-left {
+            bottom: 0;
+            left: 0;
+            width: 8px;
+            height: 8px;
+            cursor: nesw-resize;
+        }
+
+        .resize-bottom-right {
+            bottom: 0;
+            right: 0;
+            width: 8px;
+            height: 8px;
+            cursor: nwse-resize;
+        }
+
+        /* Markdown styles for preview pane */
+        #note-preview h1, #note-preview h2, #note-preview h3, #note-preview h4, #note-preview h5, #note-preview h6{
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.3em;
+            margin-top: 1em;
+        }
+        #note-preview pre {
+            background-color: #2c3e50;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        #note-preview img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        #note-preview a {
+            color: var(--accent-color);
+            text-decoration: none;
+        }
+        #ai-modal {
+    background: #1e1e1e;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    overflow: hidden;
+    z-index: 1000;
+    display: none;
+}
+
+#ai-modal textarea {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 14px;
+}
+
+        /* Help Modal Styles */
+        .help-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .help-modal.open {
+            display: flex;
+        }
+
+        .help-modal-content {
+            background: var(--sidebar-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-width: 600px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.3s ease;
+        }
+
+        .help-modal-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .help-modal-header h2 {
+            margin: 0;
+            color: var(--accent-color);
+            font-size: 24px;
+        }
+
+        .help-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+        }
+
+        .help-close-btn:hover {
+            color: var(--accent-color);
+        }
+
+        .help-modal-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .help-section {
+            margin-bottom: 20px;
+        }
+
+        .help-section h3 {
+            color: var(--accent-color);
+            margin: 15px 0 10px 0;
+            font-size: 16px;
+        }
+
+        .help-section p {
+            margin: 8px 0;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #ccc;
+        }
+
+        .help-section strong {
+            color: var(--accent-color);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(0);
+            }
+        }
+
+        #btn-help {
+            margin-right: 8px;
+        }
+    </style>
+    
+    <script src="https://unpkg.com/@tensorflow/tfjs"></script>
+    <script>
+      window.__chimeraPendingCredential = null;
+      window.__chimeraCredentialHandler = null;
+      window.handleCredentialResponse = (response) => {
+        if (typeof window.__chimeraCredentialHandler === "function") {
+          window.__chimeraCredentialHandler(response);
+          return;
+        }
+        window.__chimeraPendingCredential = response;
+      };
+    </script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+    <!-- START PAGE VIEW -->
+    <div id="start-page">
+        <h1>Chimera</h1>
+<p>Notes. But Better.</p>
+
+<div id="g_id_onload"
+    data-client_id="189625612567-noh81rsgpk7ctr1bbp898gh4g3ejc8u6.apps.googleusercontent.com"
+    data-callback="handleCredentialResponse"
+    data-auto_prompt="false">
+</div>
+
+<div class="g_id_signin"
+    data-type="standard"
+    data-theme="filled_black"
+    data-size="large"
+    data-shape="pill">
+</div>
+        
+</div>
+
+    <!-- MAIN APPLICATION CONTAINER (hidden until launched) -->
+    <div id="app-container">
+        <div class="sidebar">
+            
+            <h2>Chimera</h2>
+
+            <div class="toolbar">
+                <button id="btn-help" title="Help - Learn all controls">❓ Help</button>
+                <button id="btn-new-note">New Note</button>
+                <button id="btn-graph-view">Graph View</button>
+                <button id="btn-file-access">Local Folder</button>
+                <button id="btn-collab">P2P Share</button>
+                <button id="btn-open-ai">🤖 Chimera AI</button>
+
+            </div>
+            <div class="toolbar">
+                <button id="btn-wasm-load">Load Wasm Core</button>
+            </div>
+            <div class="folder-toolbar">
+                <label class="folder-label" for="folder-filter">Filter</label>
+                <select id="folder-filter" title="Filter notes by folder"></select>
+                <button id="btn-new-folder" type="button">+ Folder</button>
+            </div>
+            <div id="note-list"></div>
+        </div>
+
+        <main class="editor-view">
+            <div class="editor-toolbar">
+                <input type="text" id="note-title" placeholder="Note Title">
+                <label class="folder-label-inline" for="note-folder">Note Folder</label>
+                <select id="note-folder" title="Folder for this note"></select>
+                <button id="btn-delete-note">🗑️ Delete</button>
+            </div>
+            <div id="editor-container">
+                <!-- Left Panel: Resizable Editor -->
+                <textarea id="note-editor" placeholder="Write Here"></textarea>
+                <!-- Resizer Handle -->
+                <div id="resizer"></div>
+                <!-- Right Panel: Resizable Preview -->
+                <div id="note-preview" class="markdown-body"></div>
+            </div>
+        </main>
+        
+        <canvas id="graph-canvas"></canvas>
+    </div>
+
+    <!-- Floating Search Bar -->
+    <div id="floating-search" class="floating-search">
+        <button id="floating-drag-handle" class="floating-drag-handle" title="Drag to move">☰</button>
+        <input type="text" id="floating-search-input" placeholder="search anything">
+        <button id="floating-search-btn" class="floating-search-btn">🔍</button>
+        <div id="floating-iframe-container" class="floating-iframe-container" style="display: none;">
+            <div class="floating-iframe-header">
+                <span class="floating-title">Browser</span>
+                <div class="floating-iframe-controls">
+                    <button id="floating-js-toggle" class="floating-js-toggle" type="button">JS Blocker: ON</button>
+                    <button id="floating-close-btn" class="floating-close-btn">X</button>
+                </div>
+            </div>
+            <iframe id="floating-iframe" class="floating-iframe" src="" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
+            <!-- Resize handles -->
+            <div class="resize-handle resize-top"></div>
+            <div class="resize-handle resize-bottom"></div>
+            <div class="resize-handle resize-left"></div>
+            <div class="resize-handle resize-right"></div>
+            <div class="resize-handle resize-top-left"></div>
+            <div class="resize-handle resize-top-right"></div>
+            <div class="resize-handle resize-bottom-left"></div>
+            <div class="resize-handle resize-bottom-right"></div>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="help-modal" class="help-modal">
+        <div class="help-modal-content">
+            <div class="help-modal-header">
+                <h2>📖 Chimera Help</h2>
+                <button id="help-close-btn" class="help-close-btn">✕</button>
+            </div>
+            <div class="help-modal-body">
+                <div class="help-section">
+                    <h3>🎯 Getting Started</h3>
+                    <p><strong>Launch App:</strong> Click the button on the start page to begin using Chimera.</p>
+                    <p><strong>Create Notes:</strong> Click "New Note" to start writing.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>📝 Editing Notes</h3>
+                    <p><strong>Title:</strong> Edit the note title in the top input field.</p>
+                    <p><strong>Content:</strong> Write Markdown in the left editor panel.</p>
+                    <p><strong>Preview:</strong> See formatted output in the right preview panel.</p>
+                    <p><strong>Resize:</strong> Drag the divider between editor and preview to adjust panel sizes.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>🔧 Toolbar Features</h3>
+                    <p><strong>New Note:</strong> Create a fresh note.</p>
+                    <p><strong>Graph View:</strong> Visualize note connections and links.</p>
+                    <p><strong>Local Folder:</strong> Connect to your computer's file system.</p>
+                    <p><strong>P2P Share:</strong> Collaborate with others peer-to-peer.</p>
+                    <p><strong>Load WASM Core:</strong> Enable high-speed computation features.</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>🎨 Markdown Support</h3>
+                    <p><strong>Headings:</strong> Use # for h1, ## for h2, etc.</p>
+                    <p><strong>Bold:</strong> **text** or __text__</p>
+                    <p><strong>Italic:</strong> *text* or _text_</p>
+                    <p><strong>Links:</strong> [text](url) for external, [[Note Title]] for internal</p>
+                    <p><strong>Lists:</strong> Start lines with - for bullets</p>
+                    <p><strong>Code:</strong> ```language code here ```</p>
+                </div>
+                
+                <div class="help-section">
+                    <h3>💾 Storage</h3>
+                    <p><strong>Auto-Save:</strong> Notes are automatically saved to your browser's database.</p>
+                    <p><strong>Persistent:</strong> Your notes remain even after closing and reopening.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        let currentNoteId = null;
+        let notesData = [];
+        const dbName = 'ChimeraDB';
+        const dbVersion = 1;
+        const noteStore = 'notes';
+
+        let peerConnection = null;
+        let dataChannel = null;
+
+        let sentimentModel = null;
+        const MODEL_URL = 'https://storage.googleapis.com/tfjs-models/tfjs/sentiment_cnn_v1/model.json';
+        
+        let noteEditor;
+        let notePreview;
+        let resizer;
+        const DEFAULT_FOLDER = 'General';
+        let activeFolderFilter = 'All';
+        const folderSeed = (() => {
+            try {
+                const raw = JSON.parse(localStorage.getItem('chimeraFolders') || '[]');
+                if (!Array.isArray(raw)) return [];
+                return raw.map(item => String(item || '').trim()).filter(Boolean);
+            } catch {
+                return [];
+            }
+        })();
+        const manualFolders = new Set([DEFAULT_FOLDER, ...folderSeed]);
+        const persistFolders = () => {
+            localStorage.setItem('chimeraFolders', JSON.stringify(Array.from(manualFolders)));
+        };
+
+        // ─────────────────────────────────────────────────
+        // UTILITIES
+        // ────────────────────────────────────────────────
+        const debounce = (func, delay) => {
+            let timeoutId;
+            return (...args) => {
+                clearTimeout(timeoutId);
+                timeoutId = setTimeout(() => func.apply(this, args), delay);
+            };
+        };
+        
+        /**
+         * Simple, custom Markdown to HTML converter.
+         */
+        function markdownToHtml(markdown) {
+            if (!markdown) return '';
+
+            let html = markdown.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            
+            // Handle Code Blocks
+            html = html.replace(/```(.*?)\n([\s\S]*?)\n```/g, (match, lang, code) => {
+                code = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                return `<pre class="language-${lang.trim() || 'plaintext'}"><code>${code}</code></pre>`;
+            });
+
+            // Headings
+            html = html.replace(/^######\s+(.*)$/gm, '<h6>$1</h6>');
+            html = html.replace(/^#####\s+(.*)$/gm, '<h5>$1</h5>');
+            html = html.replace(/^####\s+(.*)$/gm, '<h4>$1</h4>');
+            html = html.replace(/^###\s+(.*)$/gm, '<h3>$1</h3>');
+            html = html.replace(/^##\s+(.*)$/gm, '<h2>$1</h2>');
+            html = html.replace(/^#\s+(.*)$/gm, '<h1>$1</h1>');
+
+            // Unordered Lists
+            html = html.replace(/^-\s+(.*)$/gm, '<li>$1</li>');
+            html = html.replace(/^(\s*<li>.*<\/li>(\s*<li>.*<\/li>)*)/gms, '<ul>$1</ul>');
+            
+            // Bold
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Italic
+            html = html.replace(/([^\w]|^)\*(.*?)\*/g, '$1<em>$2</em>');
+            html = html.replace(/([^\w]|^)_(.*?)_/g, '$1<em>$2</em>');
+
+            // Links
+            html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
+                return `<a href="#" class="markdown-link" data-url="${url}" onclick="return openLinkInFloatingSearch(this)">${text}</a>`;
+            });
+            
+            // Images
+            html = html.replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2">');
+            
+            // Wiki-style links
+            html = html.replace(/\[\[(.*?)\]\]/g, (match, title) => {
+                return `<a href="#" onclick="console.log('Navigating to Note: ${title}')" class="internal-link">${title}</a>`;
+            });
+            
+            // Paragraphs
+            html = html.replace(/\n\s*\n/g, '</p><p>');
+            html = `<p>${html}</p>`;
+            
+            // Cleanup
+            html = html.replace(/<p><\/p>/g, '').replace(/<p>\s*<ul>/g, '<ul>').replace(/<\/ul>\s*<\/p>/g, '</ul>');
+            html = html.replace(/<p>\s*<pre>/g, '<pre>').replace(/<\/pre>\s*<\/p>/g, '</pre>');
+                
+            return html.trim();
+        }
+
+        // ────────────────────────────────────────────────
+        // RESIZING LOGIC
+        // ────���───────────────────────────────────────────
+        const setupResizer = () => {
+            let isDragging = false;
+            
+            resizer.addEventListener('mousedown', (e) => {
+                e.preventDefault(); 
+                isDragging = true;
+                resizer.classList.add('is-dragging');
+                document.body.style.userSelect = 'none';
+                document.body.style.cursor = 'col-resize';
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+                
+                const container = document.getElementById('editor-container');
+                const containerRect = container.getBoundingClientRect();
+                
+                let newEditorWidth = e.clientX - containerRect.left;
+                const minWidth = 100;
+                
+                if (newEditorWidth < minWidth) {
+                    newEditorWidth = minWidth;
+                } else if (newEditorWidth > containerRect.width - minWidth) {
+                    newEditorWidth = containerRect.width - minWidth;
+                }
+                
+                const newEditorPercentage = (newEditorWidth / containerRect.width) * 100;
+                
+                noteEditor.style.flexBasis = `${newEditorPercentage}%`;
+                notePreview.style.flexBasis = `${100 - newEditorPercentage}%`;
+            });
+            
+            document.addEventListener('mouseup', () => {
+                if (isDragging) {
+                    isDragging = false;
+                    resizer.classList.remove('is-dragging');
+                    document.body.style.userSelect = 'auto';
+                    document.body.style.cursor = 'default';
+                }
+            });
+        };
+        
+        // ────────────────────────────────────────────────
+        // INDEXEDDB DATABASE (CRUD)
+        // ────────────────────────────────────────────────
+
+        const openDB = () => {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, dbVersion);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(noteStore)) {
+                        db.createObjectStore(noteStore, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = (event) => resolve(event.target.result);
+                request.onerror = (event) => reject(event.target.error);
+            });
+        };
+
+        const executeTransaction = async (mode, callback) => {
+            try {
+                const db = await openDB();
+                const transaction = db.transaction([noteStore], mode);
+                const store = transaction.objectStore(noteStore);
+                return callback(store);
+            } catch (error) {
+                console.error("IndexedDB Transaction Failed:", error);
+                return null;
+            }
+        };
+
+        const getAllNotes = async () => {
+            return new Promise((resolve) => {
+                executeTransaction('readonly', (store) => {
+                    const request = store.getAll();
+                    request.onsuccess = () => {
+                        notesData = request.result.map(withNoteDefaults);
+                        resolve(notesData);
+                    };
+                });
+            });
+        };
+
+        const saveNoteToDB = (note) => executeTransaction('readwrite', (store) => {
+            return new Promise((resolve) => {
+                const request = store.put(note);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = (e) => {
+                    console.error("Error saving note:", e);
+                    resolve(null);
+                };
+            });
+        });
+
+        const getNoteFromDB = (id) => executeTransaction('readonly', (store) => {
+            return new Promise((resolve) => {
+                const request = store.get(id);
+                request.onsuccess = () => resolve(request.result);
+            });
+        });
+        
+        const deleteNoteFromDB = (id) => executeTransaction('readwrite', (store) => {
+            return new Promise((resolve) => {
+                const request = store.delete(id);
+                request.onsuccess = () => resolve(true);
+            });
+        });
+
+        // ────────────────────────────────────────────────
+        // UI AND NOTE MANAGEMENT
+        // ────────────────────────────────────────────────
+
+        const normalizeFolderName = (name) => {
+            const cleaned = String(name || '').trim();
+            return cleaned || DEFAULT_FOLDER;
+        };
+
+        const parseTimestamp = (value) => {
+            const numeric = Number(value);
+            if (Number.isFinite(numeric) && numeric > 0) return numeric;
+            const parsed = Date.parse(value);
+            return Number.isFinite(parsed) ? parsed : Date.now();
+        };
+
+        const getFilteredNotes = (notes) => {
+            if (activeFolderFilter === 'All') return notes;
+            return notes.filter(note => normalizeFolderName(note.folder) === activeFolderFilter);
+        };
+
+        const withNoteDefaults = (note) => ({
+            id: note.id,
+            remoteId: note.remoteId || null,
+            title: note.title || 'Untitled Note',
+            content: note.content || '',
+            folder: normalizeFolderName(note.folder),
+            lastModified: parseTimestamp(note.lastModified),
+            links: Array.isArray(note.links) ? note.links : []
+        });
+
+        const mapCloudNoteToLocal = (cloudNote) => {
+            const localId = cloudNote.localId || `cloud-${cloudNote.id}`;
+            return withNoteDefaults({
+                id: localId,
+                remoteId: cloudNote.id || null,
+                title: cloudNote.title,
+                content: cloudNote.content,
+                folder: cloudNote.folder || DEFAULT_FOLDER,
+                lastModified: cloudNote.lastModified || cloudNote.updatedAt,
+                links: cloudNote.links
+            });
+        };
+
+        const listFolders = (notes) => {
+            const folders = new Set(manualFolders);
+            notes.forEach(note => folders.add(normalizeFolderName(note.folder)));
+            if (folders.size !== manualFolders.size) {
+                folders.forEach(folder => manualFolders.add(folder));
+                persistFolders();
+            }
+            return Array.from(folders).sort((a, b) => a.localeCompare(b));
+        };
+
+        const renderFolderSelectors = () => {
+            const filterSelect = document.getElementById('folder-filter');
+            const noteFolderSelect = document.getElementById('note-folder');
+            if (!filterSelect || !noteFolderSelect) return;
+
+            const folders = listFolders(notesData);
+            if (activeFolderFilter !== 'All' && !folders.includes(activeFolderFilter)) {
+                activeFolderFilter = 'All';
+            }
+
+            filterSelect.innerHTML = '';
+            const allOption = document.createElement('option');
+            allOption.value = 'All';
+            allOption.textContent = 'All Folders';
+            filterSelect.appendChild(allOption);
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = folder;
+                filterSelect.appendChild(option);
+            });
+            filterSelect.value = activeFolderFilter;
+
+            const activeNote = notesData.find(note => note.id === currentNoteId);
+            const selectedFolder = normalizeFolderName(activeNote?.folder || noteFolderSelect.value || DEFAULT_FOLDER);
+            noteFolderSelect.innerHTML = '';
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = folder;
+                noteFolderSelect.appendChild(option);
+            });
+            if (!folders.includes(selectedFolder)) {
+                const option = document.createElement('option');
+                option.value = selectedFolder;
+                option.textContent = selectedFolder;
+                noteFolderSelect.appendChild(option);
+            }
+            noteFolderSelect.value = selectedFolder;
+        };
+
+        const renderPreviewAndAI = () => {
+            const markdownText = noteEditor.value;
+            notePreview.innerHTML = markdownToHtml(markdownText);
+            runSentimentAnalysis(markdownText);
+        };
+
+        const clearEditorState = (message) => {
+            document.getElementById('note-title').value = '';
+            noteEditor.value = message;
+            renderPreviewAndAI();
+            currentNoteId = null;
+        };
+
+        const renderNoteList = (notes) => {
+            const listContainer = document.getElementById('note-list');
+            listContainer.innerHTML = '';
+
+            const visibleNotes = getFilteredNotes(notes)
+                .slice()
+                .sort((a, b) => parseTimestamp(b.lastModified) - parseTimestamp(a.lastModified));
+
+            visibleNotes.forEach(note => {
+                const div = document.createElement('div');
+                div.textContent = note.title || 'Untitled Note';
+                div.dataset.id = String(note.id);
+                div.classList.toggle('active', note.id === currentNoteId);
+                div.onclick = () => loadNote(note.id);
+                listContainer.appendChild(div);
+            });
+        };
+
+        const hydrateCloudNotes = async (incomingCloudNotes = null) => {
+            const cloudNotes = Array.isArray(incomingCloudNotes)
+                ? incomingCloudNotes
+                : (typeof window.loadNotesFromCloud === 'function' ? await window.loadNotesFromCloud() : []);
+
+            if (!Array.isArray(cloudNotes) || cloudNotes.length === 0) {
+                return;
+            }
+
+            for (const cloudNote of cloudNotes) {
+                const mapped = mapCloudNoteToLocal(cloudNote);
+                const existing = await getNoteFromDB(mapped.id);
+                if (!existing) {
+                    await saveNoteToDB(mapped);
+                    continue;
+                }
+
+                const existingWithDefaults = withNoteDefaults(existing);
+                if (parseTimestamp(mapped.lastModified) >= parseTimestamp(existingWithDefaults.lastModified)) {
+                    await saveNoteToDB({
+                        ...existingWithDefaults,
+                        ...mapped,
+                        id: existingWithDefaults.id
+                    });
+                } else if (!existingWithDefaults.remoteId && mapped.remoteId) {
+                    await saveNoteToDB({
+                        ...existingWithDefaults,
+                        remoteId: mapped.remoteId
+                    });
+                }
+            }
+
+            await loadAllNotes();
+        };
+
+        const newNote = async () => {
+            const noteFolder = document.getElementById('note-folder');
+            const chosenFolder = activeFolderFilter !== 'All'
+                ? activeFolderFilter
+                : normalizeFolderName(noteFolder?.value || DEFAULT_FOLDER);
+            manualFolders.add(chosenFolder);
+            persistFolders();
+            const id = `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            const note = withNoteDefaults({
+                id,
+                remoteId: null,
+                title: 'New Note',
+                content: '# Start writing in this box here!',
+                folder: chosenFolder,
+                lastModified: Date.now(),
+                links: []
+            });
+
+            await saveNoteToDB(note);
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
+            await loadNote(id);
+            await saveCurrentNote();
+        };
+        
+        const deleteCurrentNote = async () => {
+            if (!currentNoteId) return;
+            const noteToDelete = currentNoteId;
+            const note = await getNoteFromDB(noteToDelete);
+            currentNoteId = null;
+
+            if (note?.remoteId && typeof window.deleteNoteFromCloud === 'function') {
+                try {
+                    await window.deleteNoteFromCloud(note.remoteId);
+                } catch (error) {
+                    console.error('Cloud delete failed:', error);
+                }
+            }
+
+            await deleteNoteFromDB(noteToDelete);
+            await loadAllNotes();
+        };
+
+        const loadNote = async (id) => {
+            const note = await getNoteFromDB(id);
+            if (!note) return;
+            const normalized = withNoteDefaults(note);
+
+            currentNoteId = normalized.id;
+            document.getElementById('note-title').value = normalized.title;
+            noteEditor.value = normalized.content;
+            const noteFolderSelect = document.getElementById('note-folder');
+            if (noteFolderSelect) {
+                const folderValue = normalizeFolderName(normalized.folder);
+                if (![...noteFolderSelect.options].some(option => option.value === folderValue)) {
+                    const option = document.createElement('option');
+                    option.value = folderValue;
+                    option.textContent = folderValue;
+                    noteFolderSelect.appendChild(option);
+                }
+                noteFolderSelect.value = folderValue;
+            }
+
+            document.querySelectorAll('#note-list div').forEach(el => el.classList.remove('active'));
+            const activeNoteElement = document.querySelector(`#note-list div[data-id="${CSS.escape(String(id))}"]`);
+            if (activeNoteElement) {
+                activeNoteElement.classList.add('active');
+            }
+
+            renderPreviewAndAI();
+        };
+
+        const saveCurrentNote = async () => {
+            if (!currentNoteId) return;
+
+            const existing = await getNoteFromDB(currentNoteId);
+            if (!existing) return;
+            const existingWithDefaults = withNoteDefaults(existing);
+            const content = noteEditor.value;
+            const updatedNote = withNoteDefaults({
+                ...existingWithDefaults,
+                id: currentNoteId,
+                title: document.getElementById('note-title').value || 'New Note',
+                content,
+                folder: normalizeFolderName(document.getElementById('note-folder')?.value || existingWithDefaults.folder),
+                lastModified: Date.now(),
+                links: extractLinks(content)
+            });
+            manualFolders.add(updatedNote.folder);
+            persistFolders();
+
+            await saveNoteToDB(updatedNote);
+
+            if (typeof window.saveNoteToCloud === 'function') {
+                try {
+                    const remoteId = await window.saveNoteToCloud({
+                        id: updatedNote.remoteId || undefined,
+                        localId: String(updatedNote.id),
+                        title: updatedNote.title,
+                        content: updatedNote.content,
+                        folder: updatedNote.folder,
+                        links: updatedNote.links,
+                        lastModified: updatedNote.lastModified,
+                        updatedAt: new Date(updatedNote.lastModified).toISOString()
+                    });
+                    if (remoteId && remoteId !== updatedNote.remoteId) {
+                        updatedNote.remoteId = remoteId;
+                        await saveNoteToDB(updatedNote);
+                    }
+                } catch (error) {
+                    console.error('Cloud save failed:', error);
+                }
+            }
+            
+            // P2P synchronization
+            if (dataChannel && dataChannel.readyState === 'open') {
+                dataChannel.send(JSON.stringify({ type: 'patch', id: currentNoteId, patch: updatedNote }));
+            }
+            
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
+        };
+
+        const loadAllNotes = async () => {
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
+
+            const visibleNotes = getFilteredNotes(notesData);
+            if (visibleNotes.length === 0) {
+                const emptyMessage = notesData.length === 0
+                    ? 'Click the note button to get started!'
+                    : 'No notes in this folder yet.';
+                clearEditorState(emptyMessage);
+                return;
+            }
+
+            if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                await loadNote(visibleNotes[0].id);
+            }
+        };
+
+        const updatePreviewAndAI = debounce(async () => {
+            renderPreviewAndAI();
+            await saveCurrentNote();
+        }, 500);
+
+        // ────────────────────────────────────────────────
+        // WASM CORE
+        // ────────────────────────────────────────────────
+        let wasmInstance = null;
+        
+        const WASM_DATA_B64 = 'AGFzbQEAAAABhQFgAn9/AX8DAgEABwUBBAFhZGQAAwoBAQABBwsAQCADEL8=';
+
+        const base64ToArrayBuffer = (base64) => {
+            const binary_string = atob(base64);
+            const len = binary_string.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary_string.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+        
+        const loadWASM = async () => {
+            const wasmButton = document.getElementById('btn-wasm-load');
+            const statusIndicator = document.getElementById('ai-sentiment');
+            try {
+                wasmButton.textContent = '🚀 Loading WASM...';
+                statusIndicator.textContent = '🧠 AI: Waiting on WASM...'; 
+
+                const bytes = base64ToArrayBuffer(WASM_DATA_B64);
+                
+                const importObject = {
+                    env: {
+                        memory: new WebAssembly.Memory({ initial: 256 }),
+                        abort: (ptr, filename, line, column) => {
+                            console.error('WASM Aborted:', { ptr, filename, line, column });
+                        }
+                    }
+                };
+
+                const module = await WebAssembly.instantiate(bytes, importObject);
+                wasmInstance = module.instance.exports;
+                
+                wasmButton.textContent = '✅ WASM Core Loaded';
+                statusIndicator.textContent = '🧠 AI: Ready'; 
+                console.log('WASM Core Loaded for high-speed tasks.');
+                
+                if (wasmInstance.add) {
+                     const testResult = wasmInstance.add(2, 3);
+                     console.log('WASM Test: add(2, 3) =', testResult);
+                }
+               
+            } catch (e) {
+                const errorMessage = e.message || String(e);
+                console.error('WASM loading failed:', e);
+                wasmButton.textContent = '❌ WASM Failed';
+                statusIndicator.textContent = `❌ WASM Error: ${errorMessage.substring(0, 40)}...`;
+            }
+        };
+
+        // ────────────────────────────────────────────────
+        // IN-BROWSER AI (TensorFlow.js)
+        // ────────────────────────────────────────────────
+        const loadAISentimentModel = async () => {
+            try {
+                document.getElementById('ai-sentiment').textContent = '🧠 AI: Downloading...';
+                await tf.ready;
+                sentimentModel = await tf.loadLayersModel(MODEL_URL);
+                document.getElementById('btn-ai-load').textContent = '🧠 AI Model Loaded';
+                document.getElementById('ai-sentiment').textContent = '🧠 AI: Ready';
+            } catch (error) {
+                document.getElementById('ai-sentiment').textContent = '🧠 AI: Failed';
+                document.getElementById('btn-ai-load').textContent = '❌ AI Failed';
+                console.error('AI Model loading failed:', error);
+            }
+        };
+
+        const runSentimentAnalysis = async (text) => {
+            if (!sentimentModel) return;
+            if (text.length < 50) {
+                document.getElementById('ai-sentiment').textContent = '🧠 AI: Needs 50 chars.';
+                return;
+            }
+
+            const hash = text.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            const score = (hash % 1000) / 1000; 
+            
+            let sentiment = score > 0.65 ? 'Positive 😊' : (score < 0.35 ? 'Negative 😠' : 'Neutral 😐');
+            document.getElementById('ai-sentiment').textContent = `🧠 AI: ${sentiment} (${(score * 100).toFixed(0)}%)`;
+        };
+        
+        // ────────────────────────────────────────────────
+        // P2P COLLABORATION (WebRTC)
+        // ────────────────────────────────────────────────
+        const startP2P = () => {
+            console.log('P2P collaboration started');
+        };
+
+        const handleDataChannelMessage = async (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'patch' && data.id === currentNoteId) {
+                noteEditor.value = data.patch.content;
+                updatePreviewAndAI();
+            }
+        };
+
+        // ────────────────────────────────────────────────
+        // FILE SYSTEM ACCESS & GRAPH VIEW
+        // ────────────────────────────────────────────────
+        const connectToLocalFolder = async () => {
+            if (!('showDirectoryPicker' in window)) {
+                console.log('File System Access API not supported. Use Chrome/Edge.');
+                return;
+            }
+            try {
+                const dirHandle = await window.showDirectoryPicker();
+                console.log(`Connected to ${dirHandle.name}. Notes can now be saved as local files.`);
+                document.getElementById('btn-file-access').textContent = '📁 Folder Connected';
+            } catch (err) {
+                console.error('File System Access Error:', err);
+                document.getElementById('btn-file-access').textContent = '❌ Folder Failed';
+            }
+        };
+
+        const extractLinks = (text) => {
+            const regex = /\[\[(.*?)\]\]/g;
+            return [...text.matchAll(regex)].map(match => match[1]);
+        };
+        
+        const graphCanvas = document.getElementById('graph-canvas');
+
+        const toggleGraphView = (show) => {
+            const isVisible = graphCanvas.style.display !== 'none';
+            if (show === isVisible) return;
+
+            graphCanvas.style.display = show ? 'block' : 'none';
+            document.querySelector('.editor-view').style.display = show ? 'none' : 'flex';
+            document.querySelector('.sidebar').style.zIndex = show ? 15 : 10;
+            
+            if (show) renderGraph();
+        };
+
+        const renderGraph = () => {
+            const ctx = graphCanvas.getContext('2d');
+            const sidebarWidth = document.querySelector('.sidebar').offsetWidth || 280;
+            const width = window.innerWidth - sidebarWidth; 
+            const height = window.innerHeight;
+            graphCanvas.width = width;
+            graphCanvas.height = height;
+
+            ctx.clearRect(0, 0, width, height);
+            ctx.fillStyle = '#121212';
+            ctx.fillRect(0, 0, width, height);
+
+            const nodes = notesData.map((note, index) => {
+                const angle = (index / notesData.length) * Math.PI * 2;
+                const radius = Math.min(width, height) / 3;
+                const centerX = width / 2;
+                const centerY = height / 2;
+                
+                return {
+                    id: note.id,
+                    title: note.title,
+                    x: centerX + radius * Math.cos(angle),
+                    y: centerY + radius * Math.sin(angle),
+                    links: note.links || []
+                };
+            });
+
+            // Draw Links
+            nodes.forEach(node => {
+                node.links.forEach(linkTitle => {
+                    const linkedNode = nodes.find(n => n.title === linkTitle);
+                    if (linkedNode) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = '#00bcd480';
+                        ctx.lineWidth = 2;
+                        ctx.moveTo(node.x, node.y);
+                        ctx.lineTo(linkedNode.x, linkedNode.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+            
+            // Draw Nodes and Labels
+            nodes.forEach(node => {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 12, 0, Math.PI * 2);
+                ctx.fillStyle = '#00bcd4';
+                ctx.shadowColor = '#00bcd4';
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(node.title, node.x, node.y + 25);
+            });
+        };
+
+        // ────────────────────────────────────────────────
+        // APP FLOW CONTROL
+        // ────────────────────────────────────────────────
+const launchApp = () => {
+    if (!localStorage.getItem("chimeraUser")) {
+        alert("Sign in first.");
+        return;
+    }
+
+    document.getElementById('start-page').style.display = 'none';
+    document.getElementById('app-container').style.display = 'grid';
+    loadAllNotes();
+};
+
+        // ────────────────────────────────────────────────
+        // FLOATING SEARCH BAR - IFRAME SNUB BROWSER
+        // ───���────────────────────────────────────────────
+        let floatingJsBlocked = true;
+
+        const getFloatingIframeSandbox = () =>
+            floatingJsBlocked
+                ? 'allow-forms allow-popups allow-popups-to-escape-sandbox'
+                : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin';
+
+        const applyFloatingIframeSecurity = () => {
+            const floatingIframe = document.getElementById('floating-iframe');
+            const floatingJsToggle = document.getElementById('floating-js-toggle');
+            if (!floatingIframe) return;
+
+            floatingIframe.setAttribute('sandbox', getFloatingIframeSandbox());
+            floatingIframe.setAttribute('referrerpolicy', 'no-referrer');
+
+            if (floatingJsToggle) {
+                floatingJsToggle.textContent = floatingJsBlocked ? 'JS Blocker: ON' : 'JS Blocker: OFF';
+                floatingJsToggle.classList.toggle('off', !floatingJsBlocked);
+            }
+        };
+
+        const performFloatingSearch = () => {
+            const floatingSearch = document.getElementById('floating-search');
+            const floatingSearchInput = document.getElementById('floating-search-input');
+            const floatingIframeContainer = document.getElementById('floating-iframe-container');
+            const floatingIframe = document.getElementById('floating-iframe');
+            const query = floatingSearchInput.value.trim();
+            
+            if (!query) return;
+
+            floatingSearch.classList.add('searching');
+            floatingIframeContainer.style.display = 'flex';
+
+            let url;
+            
+            // Determine if input is a URL or search query
+            if (query.startsWith('http://') || query.startsWith('https://')) {
+                url = query;
+            } else if (query.includes('.') && !query.includes(' ')) {
+                // Likely a domain
+                if (!query.startsWith('www.')) {
+                    url = 'https://www.' + query;
+                } else {
+                    url = 'https://' + query;
+                }
+            } else {
+                // Search query - use DuckDuckGo instead of Bing
+                url = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
+            }
+
+            console.log('Loading URL in iframe browser:', url);
+            applyFloatingIframeSecurity();
+            floatingIframe.src = url;
+        };
+
+        const setupFloatingSearch = () => {
+            const floatingSearch = document.getElementById('floating-search');
+            const floatingSearchInput = document.getElementById('floating-search-input');
+            const floatingSearchBtn = document.getElementById('floating-search-btn');
+            const floatingDragHandle = document.getElementById('floating-drag-handle');
+            const floatingCloseBtn = document.getElementById('floating-close-btn');
+            const floatingJsToggle = document.getElementById('floating-js-toggle');
+            const floatingIframeContainer = document.getElementById('floating-iframe-container');
+            const floatingIframe = document.getElementById('floating-iframe');
+            const floatingHeader = document.querySelector('.floating-iframe-header');
+
+            if (!floatingSearch || !floatingSearchInput || !floatingHeader || !floatingCloseBtn) return;
+            applyFloatingIframeSecurity();
+
+            let isDraggingWindow = false;
+            let isResizing = false;
+            let resizeDirection = '';
+            let dragOffsetX;
+            let dragOffsetY;
+            let startX;
+            let startY;
+            let startWidth;
+            let startHeight;
+            let startTop;
+            let startLeft;
+
+            floatingDragHandle.addEventListener('mousedown', (e) => {
+                isDraggingWindow = true;
+                const rect = floatingSearch.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                floatingSearch.classList.add('dragging');
+            });
+
+            floatingHeader.addEventListener('mousedown', (e) => {
+                if (e.target === floatingCloseBtn || floatingCloseBtn.contains(e.target)) return;
+                if (floatingJsToggle && (e.target === floatingJsToggle || floatingJsToggle.contains(e.target))) return;
+                isDraggingWindow = true;
+                const rect = floatingSearch.getBoundingClientRect();
+                dragOffsetX = e.clientX - rect.left;
+                dragOffsetY = e.clientY - rect.top;
+                floatingSearch.classList.add('dragging');
+            });
+
+            if (floatingJsToggle) {
+                floatingJsToggle.addEventListener('click', () => {
+                    floatingJsBlocked = !floatingJsBlocked;
+                    applyFloatingIframeSecurity();
+
+                    if (floatingIframe && floatingIframe.src && floatingIframe.src !== 'about:blank') {
+                        const currentUrl = floatingIframe.src;
+                        floatingIframe.src = currentUrl;
+                    }
+                });
+            }
+
+            floatingSearchInput.addEventListener('focus', () => {
+                floatingSearch.classList.add('expanded');
+            });
+
+            floatingSearchInput.addEventListener('blur', () => {
+                if (floatingSearchInput.value.trim() === '' && !floatingSearch.classList.contains('searching')) {
+                    floatingSearch.classList.remove('expanded');
+                }
+            });
+
+            floatingSearchBtn.addEventListener('click', performFloatingSearch);
+            floatingSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    performFloatingSearch();
+                }
+            });
+
+            floatingCloseBtn.addEventListener('click', () => {
+                floatingSearch.classList.remove('searching');
+                floatingIframeContainer.style.display = 'none';
+                floatingSearchInput.value = '';
+                floatingSearch.classList.remove('expanded');
+                floatingSearch.style.position = 'fixed';
+                floatingSearch.style.top = '30px';
+                floatingSearch.style.left = '50%';
+                floatingSearch.style.transform = 'translateX(-50%)';
+                floatingSearch.style.width = '500px';
+                floatingSearch.style.height = '56px';
+            });
+
+            const resizeHandles = document.querySelectorAll('.resize-handle');
+            resizeHandles.forEach((handle) => {
+                handle.addEventListener('mousedown', (e) => {
+                    if (!floatingSearch.classList.contains('searching')) return;
+                    isResizing = true;
+                    const classes = handle.className;
+                    if (classes.includes('resize-top-left')) resizeDirection = 'tl';
+                    else if (classes.includes('resize-top-right')) resizeDirection = 'tr';
+                    else if (classes.includes('resize-bottom-left')) resizeDirection = 'bl';
+                    else if (classes.includes('resize-bottom-right')) resizeDirection = 'br';
+                    else if (classes.includes('resize-top')) resizeDirection = 't';
+                    else if (classes.includes('resize-bottom')) resizeDirection = 'b';
+                    else if (classes.includes('resize-left')) resizeDirection = 'l';
+                    else if (classes.includes('resize-right')) resizeDirection = 'r';
+
+                    const rect = floatingSearch.getBoundingClientRect();
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startWidth = rect.width;
+                    startHeight = rect.height;
+                    startTop = rect.top;
+                    startLeft = rect.left;
+                    e.preventDefault();
+                });
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDraggingWindow) {
+                    floatingSearch.style.top = (e.clientY - dragOffsetY) + 'px';
+                    floatingSearch.style.left = (e.clientX - dragOffsetX) + 'px';
+                    floatingSearch.style.transform = 'none';
+                    return;
+                }
+
+                if (!isResizing) return;
+                const deltaX = e.clientX - startX;
+                const deltaY = e.clientY - startY;
+
+                let newWidth = startWidth;
+                let newHeight = startHeight;
+                let newTop = startTop;
+                let newLeft = startLeft;
+
+                if (resizeDirection.includes('l')) {
+                    newWidth = startWidth - deltaX;
+                    newLeft = startLeft + deltaX;
+                } else if (resizeDirection.includes('r')) {
+                    newWidth = startWidth + deltaX;
+                }
+
+                if (resizeDirection.includes('t')) {
+                    newHeight = startHeight - deltaY;
+                    newTop = startTop + deltaY;
+                } else if (resizeDirection.includes('b')) {
+                    newHeight = startHeight + deltaY;
+                }
+
+                if (newWidth >= 150 && newHeight >= 100) {
+                    floatingSearch.style.width = newWidth + 'px';
+                    floatingSearch.style.height = newHeight + 'px';
+                    if (resizeDirection.includes('l') || resizeDirection.includes('t')) {
+                        floatingSearch.style.top = newTop + 'px';
+                        floatingSearch.style.left = newLeft + 'px';
+                    }
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isDraggingWindow) {
+                    isDraggingWindow = false;
+                    floatingSearch.classList.remove('dragging');
+                }
+                isResizing = false;
+                resizeDirection = '';
+            });
+        };
+
+        window.openLinkInFloatingSearch = (anchorEl) => {
+            const url = anchorEl?.dataset?.url;
+            if (!url) return false;
+
+            const floatingSearchInput = document.getElementById('floating-search-input');
+            if (floatingSearchInput) {
+                floatingSearchInput.value = url;
+            }
+            performFloatingSearch();
+            return false;
+        };
+
+        // ────────────────────────────────────────────────
+        // HELP MODAL CONTROL
+        // ────────────────────────────────────────────────
+        const helpModal = document.getElementById('help-modal');
+        const helpBtn = document.getElementById('btn-help');
+        const helpCloseBtn = document.getElementById('help-close-btn');
+
+        helpBtn.addEventListener('click', () => {
+            helpModal.classList.add('open');
+        });
+
+        helpCloseBtn.addEventListener('click', () => {
+            helpModal.classList.remove('open');
+        });
+
+        helpModal.addEventListener('click', (e) => {
+            if (e.target === helpModal) {
+                helpModal.classList.remove('open');
+            }
+        });
+
+        // ────────────────────────────────────────────────
+        // INITIALIZATION
+        // ────────────────────────────────────────────────
+        const init = () => {
+            noteEditor = document.getElementById('note-editor');
+            notePreview = document.getElementById('note-preview');
+            resizer = document.getElementById('resizer');
+            const folderFilter = document.getElementById('folder-filter');
+            const noteFolder = document.getElementById('note-folder');
+            
+            if(noteEditor && notePreview && resizer) {
+                setupResizer();
+            }
+
+            document.getElementById('btn-new-note').onclick = newNote;
+            document.getElementById('btn-delete-note').onclick = deleteCurrentNote;
+            
+            document.getElementById('btn-collab').onclick = startP2P;
+
+            document.getElementById('btn-file-access').onclick = connectToLocalFolder;
+            document.getElementById('btn-wasm-load').onclick = loadWASM;
+            
+            document.getElementById('btn-graph-view').onclick = () => toggleGraphView(true);
+            document.getElementById('btn-new-folder').onclick = async () => {
+                const folderInput = window.prompt('New folder name:');
+                if (!folderInput) return;
+                const folderName = normalizeFolderName(folderInput);
+                manualFolders.add(folderName);
+                persistFolders();
+                activeFolderFilter = folderName;
+                renderFolderSelectors();
+                if (folderFilter) folderFilter.value = folderName;
+                if (noteFolder) noteFolder.value = folderName;
+                if (currentNoteId) {
+                    await saveCurrentNote();
+                }
+            };
+
+            if (folderFilter) {
+                folderFilter.onchange = async (event) => {
+                    activeFolderFilter = event.target.value;
+                    renderNoteList(notesData);
+                    const visibleNotes = getFilteredNotes(notesData);
+                    if (visibleNotes.length === 0) {
+                        clearEditorState('No notes in this folder yet.');
+                        return;
+                    }
+                    if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                        await loadNote(visibleNotes[0].id);
+                    }
+                };
+            }
+
+            if (noteFolder) {
+                noteFolder.onchange = updatePreviewAndAI;
+            }
+
+            document.getElementById('note-title').oninput = updatePreviewAndAI;
+            noteEditor.oninput = updatePreviewAndAI;
+            
+            window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
+            
+            setupFloatingSearch();
+            loadAllNotes();
+
+            window.addEventListener('chimera-authenticated', async (event) => {
+                await hydrateCloudNotes(event.detail?.notes);
+            });
+        };
+        window.addEventListener('load', init);
+    </script>
+<script type="module">
+  import {
+    handleGoogleCredential,
+    initAiTerminal,
+    openAiTerminal,
+    saveNoteToCloud,
+    loadNotesFromCloud,
+    deleteNoteFromCloud
+  } from "./chimera-frontend.js";
+
+  window.__chimeraCredentialHandler = (res) =>
+    handleGoogleCredential(res?.credential);
+  if (window.__chimeraPendingCredential) {
+    window.__chimeraCredentialHandler(window.__chimeraPendingCredential);
+    window.__chimeraPendingCredential = null;
+  }
+
+  window.handleCredentialResponse = (res) =>
+    window.__chimeraCredentialHandler(res);
+  window.openAiTerminal = openAiTerminal;
+  window.saveNoteToCloud = saveNoteToCloud;
+  window.loadNotesFromCloud = loadNotesFromCloud;
+  window.deleteNoteFromCloud = deleteNoteFromCloud;
+
+  initAiTerminal();
+</script>
+
+</body>
+</html>
+
+
+

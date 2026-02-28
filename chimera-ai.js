@@ -3,7 +3,9 @@
 const backendBaseUrl =
   window.CHIMERA_BACKEND_URL ||
   localStorage.getItem("chimeraBackendUrl") ||
-  "http://localhost:4000";
+  (window.location.hostname.includes("github.io")
+    ? "https://chimera-test-2.onrender.com"
+    : "http://localhost:4000");
 
 const userInput = document.getElementById("userInput");
 const askButton = document.getElementById("askAI");
