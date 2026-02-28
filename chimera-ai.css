@@ -1,110 +1,159 @@
 /* ============================================================
-   Chimera AI Terminal — Standalone Stylesheet
+   Chimera AI Panel Styles
    ============================================================ */
 
-.floating-terminal {
+.chimera-ai-panel {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 420px;
-  height: 320px;
-  background: #111;
-  color: #e5e5e5;
-  border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+  top: 8vh;
+  right: 3vw;
+  width: min(760px, 92vw);
+  height: min(78vh, 820px);
+  min-width: 340px;
+  min-height: 320px;
+  max-width: 95vw;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
-  font-family: "JetBrains Mono", monospace;
-  z-index: 9999;
+  border: 1px solid #2e3a45;
+  border-radius: 16px;
+  background: #0d1217;
+  box-shadow: 0 20px 55px rgba(0, 0, 0, 0.5);
+  z-index: 3000;
+  resize: both;
+  overflow: hidden;
 }
 
-.floating-terminal.hidden {
+.chimera-ai-panel.hidden {
   display: none;
 }
 
-/* ------------------------------
-   Header bar
------------------------------- */
-.terminal-header {
+.chimera-ai-panel.dragging {
+  opacity: 0.96;
+}
+
+.chimera-ai-panel-header {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
-  background: #1b1b1b;
-  border-bottom: 1px solid #333;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: linear-gradient(90deg, #111a20 0%, #16242f 100%);
+  border-bottom: 1px solid #25313a;
+  cursor: move;
+  user-select: none;
 }
 
-.terminal-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 6px;
+.chimera-ai-panel-title {
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #d8f6ff;
 }
 
-.terminal-dot.red { background: #ff5f57; }
-.terminal-dot.yellow { background: #ffbd2e; }
-.terminal-dot.green { background: #28c840; }
+.chimera-ai-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
-.terminal-title {
-  margin-left: 6px;
+.chimera-ai-panel-actions button {
+  border: 1px solid #3a4a57;
+  background: #19242c;
+  color: #d3e3ef;
+  padding: 7px 10px;
+  border-radius: 8px;
   font-size: 12px;
-  color: #aaa;
-  flex: 1;
+  font-weight: 600;
 }
 
-.terminal-close {
-  background: transparent;
-  border: none;
-  color: #888;
-  font-size: 16px;
-  cursor: pointer;
+.chimera-ai-panel-actions button:hover {
+  background: #24313b;
 }
 
-/* ------------------------------
-   Body (scrollable output)
------------------------------- */
-.terminal-body {
+.chimera-ai-messages {
   flex: 1;
-  padding: 8px 10px;
   overflow-y: auto;
-  font-size: 12px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(39, 73, 98, 0.28), transparent 45%),
+    radial-gradient(circle at 88% 4%, rgba(26, 64, 83, 0.25), transparent 40%),
+    #0e1419;
+}
+
+.chimera-ai-message {
+  max-width: 82%;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  line-height: 1.45;
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.chimera-ai-message.user {
+  margin-left: auto;
+  background: #23475d;
+  color: #e4f8ff;
+  border: 1px solid #2b6b8b;
+}
+
+.chimera-ai-message.assistant {
+  background: #1a242c;
+  color: #e9f1f7;
+  border: 1px solid #2e3e4a;
+}
+
+.chimera-ai-form {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid #25313a;
+  background: #101820;
+}
+
+.chimera-ai-input {
+  flex: 1;
+  resize: none;
+  border-radius: 10px;
+  border: 1px solid #334150;
+  background: #0f171d;
+  color: #f1f7fb;
+  padding: 10px;
+  font-size: 14px;
   line-height: 1.4;
 }
 
-.terminal-line {
-  margin-bottom: 4px;
+.chimera-ai-input:focus {
+  outline: 1px solid #4fa8d5;
 }
 
-.terminal-line.user {
-  color: #8be9fd;
+#chimera-ai-send {
+  width: 96px;
+  border-radius: 10px;
+  border: 1px solid #3a5d74;
+  background: linear-gradient(135deg, #1f6a8f 0%, #2e86b1 100%);
+  color: #f8fdff;
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.terminal-line.ai {
-  color: #50fa7b;
+#chimera-ai-send:hover {
+  filter: brightness(1.06);
 }
 
-/* ------------------------------
-   Input row
------------------------------- */
-.terminal-input-row {
-  display: flex;
-  align-items: center;
-  padding: 6px 10px 8px;
-  border-top: 1px solid #333;
-  background: #151515;
+#chimera-ai-send:disabled,
+.chimera-ai-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
-.terminal-prompt {
-  color: #50fa7b;
-  margin-right: 6px;
-}
-
-#ai-terminal-input {
-  flex: 1;
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #e5e5e5;
-  padding: 4px 6px;
-  font-size: 12px;
-  font-family: inherit;
+@media (max-width: 700px) {
+  .chimera-ai-panel {
+    width: 96vw;
+    height: 72vh;
+    left: 2vw;
+    right: auto;
+    top: 16vh;
+    min-width: 280px;
+  }
 }

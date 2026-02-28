@@ -7,7 +7,19 @@ import { MongoClient, ObjectId } from "mongodb";
 dotenv.config();
 
 const app = express();
-app.use(cors());
+const PORT = Number(process.env.PORT || 4000);
+const DB_NAME = process.env.MONGO_DB_NAME || "chimera";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const corsOrigins = (process.env.CORS_ORIGIN || "*")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: corsOrigins.includes("*") ? true : corsOrigins
+  })
+);
 app.use(express.json());
 
 // Google client
@@ -15,15 +27,107 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // MongoDB
 let db;
-(async () => {
+async function connectMongo() {
+  if (!process.env.MONGO_URI) {
+    throw new Error("Missing MONGO_URI in environment");
+  }
   const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();
-  db = mongo.db("chimera");
-  console.log("MongoDB connected");
-})();
+  db = mongo.db(DB_NAME);
+  console.log(`MongoDB connected (${DB_NAME})`);
+}
+
+function ensureDb(req, res, next) {
+  if (!db) {
+    return res.status(503).json({ error: "Database not ready" });
+  }
+  next();
+}
+
+function sanitizeAiReply(text) {
+  return String(text || "").replace(/\b(google|gemini)\b/gi, "Chimera Core");
+}
+
+function mapHistoryToContents(history) {
+  if (!Array.isArray(history)) {
+    return [];
+  }
+
+  return history
+    .slice(-12)
+    .map((entry) => {
+      const text = String(entry?.text || "").trim();
+      if (!text) {
+        return null;
+      }
+
+      const role = entry?.role === "assistant" ? "model" : "user";
+      return { role, parts: [{ text }] };
+    })
+    .filter(Boolean);
+}
+
+async function callGemini({ message, history }) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY in environment");
+  }
+
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/` +
+    `${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=` +
+    `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+
+  const contents = mapHistoryToContents(history);
+  contents.push({
+    role: "user",
+    parts: [{ text: message }]
+  });
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [
+          {
+            text:
+              "You are Chimera AI. Never mention model providers, vendors, or product names. " +
+              "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
+          }
+        ]
+      },
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 700
+      },
+      contents
+    })
+  });
+
+  if (!response.ok) {
+    const errorBody = (await response.text()).slice(0, 600);
+    throw new Error(`AI provider request failed (${response.status}): ${errorBody}`);
+  }
+
+  const data = await response.json();
+  const reply = (data?.candidates?.[0]?.content?.parts || [])
+    .map((part) => String(part?.text || ""))
+    .join("\n")
+    .trim();
+
+  if (!reply) {
+    throw new Error("AI provider returned an empty reply");
+  }
+
+  return sanitizeAiReply(reply);
+}
 
 // Verify Google ID token
 async function verifyGoogleToken(idToken) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error("Missing GOOGLE_CLIENT_ID in environment");
+  }
+
   const ticket = await googleClient.verifyIdToken({
     idToken,
     audience: process.env.GOOGLE_CLIENT_ID
@@ -55,8 +159,16 @@ async function auth(req, res, next) {
   }
 }
 
+app.get("/health", (req, res) => {
+  res.json({
+    ok: true,
+    db: Boolean(db),
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Login route
-app.post("/auth/google", async (req, res) => {
+app.post("/auth/google", ensureDb, async (req, res) => {
   const { credential } = req.body;
 
   if (!credential) {
@@ -83,7 +195,7 @@ app.post("/auth/google", async (req, res) => {
 });
 
 // Get notes
-app.get("/notes", auth, async (req, res) => {
+app.get("/notes", ensureDb, auth, async (req, res) => {
   const notes = await db
     .collection("notes")
     .find({ userId: req.user.userId })
@@ -93,7 +205,7 @@ app.get("/notes", auth, async (req, res) => {
 });
 
 // Save note
-app.post("/notes", auth, async (req, res) => {
+app.post("/notes", ensureDb, auth, async (req, res) => {
   const { id, title, content, updatedAt } = req.body;
 
   const note = {
@@ -104,8 +216,15 @@ app.post("/notes", auth, async (req, res) => {
   };
 
   if (id) {
+    let objectId;
+    try {
+      objectId = new ObjectId(id);
+    } catch {
+      return res.status(400).json({ error: "Invalid note id" });
+    }
+
     await db.collection("notes").updateOne(
-      { _id: new ObjectId(id), userId: req.user.userId },
+      { _id: objectId, userId: req.user.userId },
       { $set: note }
     );
     return res.json({ ok: true, id });
@@ -116,17 +235,57 @@ app.post("/notes", auth, async (req, res) => {
 });
 
 // Delete note
-app.delete("/notes/:id", auth, async (req, res) => {
+app.delete("/notes/:id", ensureDb, auth, async (req, res) => {
   const { id } = req.params;
 
+  let objectId;
+  try {
+    objectId = new ObjectId(id);
+  } catch {
+    return res.status(400).json({ error: "Invalid note id" });
+  }
+
   await db.collection("notes").deleteOne({
-    _id: new ObjectId(id),
+    _id: objectId,
     userId: req.user.userId
   });
 
   res.json({ ok: true });
 });
 
-app.listen(process.env.PORT, () =>
-  console.log(`Chimera backend running on port ${process.env.PORT}`)
-);
+// Basic AI endpoint for frontend terminal wiring
+app.post("/ai/chat", async (req, res) => {
+  const message = String(req.body?.message || "").trim();
+  const history = Array.isArray(req.body?.history) ? req.body.history : [];
+
+  if (!message) {
+    return res.status(400).json({ error: "Missing message" });
+  }
+
+  try {
+    const reply = await callGemini({ message, history });
+    res.json({ reply });
+  } catch (error) {
+    console.error("AI chat failed:", error.message);
+    res.status(503).json({ error: "AI service unavailable" });
+  }
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+async function start() {
+  try {
+    await connectMongo();
+    app.listen(PORT, () => {
+      console.log(`Chimera backend running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Failed to start backend:", error.message);
+    process.exit(1);
+  }
+}
+
+start();

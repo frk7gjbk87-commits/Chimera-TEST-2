@@ -330,6 +330,34 @@
             flex: 1;
         }
 
+        .floating-iframe-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .floating-js-toggle {
+            border: 1px solid #5a7690;
+            background: #1b4258;
+            color: #d9f5ff;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            padding: 6px 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .floating-js-toggle:hover {
+            background: #235a79;
+        }
+
+        .floating-js-toggle.off {
+            border-color: #6d6d6d;
+            background: #333;
+            color: #ddd;
+        }
+
         .floating-close-btn {
             background: #4a4a4a;
             border: none;
@@ -570,29 +598,6 @@
     </style>
     
     <script src="https://unpkg.com/@tensorflow/tfjs"></script>
-    <script>
-  window.handleCredentialResponse = (response) => {
-    try {
-      // Decode the credential
-      const user = JSON.parse(atob(response.credential.split('.')[1]));
-      console.log("User:", user);
-
-      // Store user in localStorage
-      localStorage.setItem("chimeraUser", JSON.stringify(user));
-
-      // Immediately launch the app
-      document.getElementById('start-page').style.display = 'none';
-      document.getElementById('app-container').style.display = 'grid';
-
-      // Load all notes after login
-      loadAllNotes(); 
-    } catch (e) {
-      console.error("Google Sign-In parsing failed:", e);
-    }
-  };
-</script>
-
-<script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -629,7 +634,6 @@
                 <button id="btn-file-access">Local Folder</button>
                 <button id="btn-collab">P2P Share</button>
                 <button id="btn-open-ai">🤖 Chimera AI</button>
-                <button onclick="openAiTerminal()">AI Console</button>
 
             </div>
             <div class="toolbar">
@@ -651,12 +655,6 @@
                 <!-- Right Panel: Resizable Preview -->
                 <div id="note-preview" class="markdown-body"></div>
             </div>
-                <div id="chimera-ai-container" style="margin-top: 10px;">
-        <textarea id="userInput" placeholder="Ask Chimera something joyful!" style="width: 70%; height: 50px;"></textarea>
-        <button id="askAI">Ask Chimera</button>
-        <p id="aiResponse" style="margin-top:5px; color: #00bcd4;"></p>
-    </div>
-</main>
         </main>
         
         <canvas id="graph-canvas"></canvas>
@@ -670,9 +668,12 @@
         <div id="floating-iframe-container" class="floating-iframe-container" style="display: none;">
             <div class="floating-iframe-header">
                 <span class="floating-title">Browser</span>
-                <button id="floating-close-btn" class="floating-close-btn">✕</button>
+                <div class="floating-iframe-controls">
+                    <button id="floating-js-toggle" class="floating-js-toggle" type="button">JS Blocker: ON</button>
+                    <button id="floating-close-btn" class="floating-close-btn">X</button>
+                </div>
             </div>
-            <iframe id="floating-iframe" class="floating-iframe" src=""></iframe>
+            <iframe id="floating-iframe" class="floating-iframe" src="" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
             <!-- Resize handles -->
             <div class="resize-handle resize-top"></div>
             <div class="resize-handle resize-bottom"></div>
@@ -1247,6 +1248,27 @@ const launchApp = () => {
         // ────────────────────────────────────────────────
         // FLOATING SEARCH BAR - IFRAME SNUB BROWSER
         // ───���────────────────────────────────────────────
+        let floatingJsBlocked = true;
+
+        const getFloatingIframeSandbox = () =>
+            floatingJsBlocked
+                ? 'allow-forms allow-popups allow-popups-to-escape-sandbox'
+                : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin';
+
+        const applyFloatingIframeSecurity = () => {
+            const floatingIframe = document.getElementById('floating-iframe');
+            const floatingJsToggle = document.getElementById('floating-js-toggle');
+            if (!floatingIframe) return;
+
+            floatingIframe.setAttribute('sandbox', getFloatingIframeSandbox());
+            floatingIframe.setAttribute('referrerpolicy', 'no-referrer');
+
+            if (floatingJsToggle) {
+                floatingJsToggle.textContent = floatingJsBlocked ? 'JS Blocker: ON' : 'JS Blocker: OFF';
+                floatingJsToggle.classList.toggle('off', !floatingJsBlocked);
+            }
+        };
+
         const performFloatingSearch = () => {
             const floatingSearch = document.getElementById('floating-search');
             const floatingSearchInput = document.getElementById('floating-search-input');
@@ -1277,6 +1299,7 @@ const launchApp = () => {
             }
 
             console.log('Loading URL in iframe browser:', url);
+            applyFloatingIframeSecurity();
             floatingIframe.src = url;
         };
 
@@ -1286,16 +1309,25 @@ const launchApp = () => {
             const floatingSearchBtn = document.getElementById('floating-search-btn');
             const floatingDragHandle = document.getElementById('floating-drag-handle');
             const floatingCloseBtn = document.getElementById('floating-close-btn');
+            const floatingJsToggle = document.getElementById('floating-js-toggle');
             const floatingIframeContainer = document.getElementById('floating-iframe-container');
+            const floatingIframe = document.getElementById('floating-iframe');
             const floatingHeader = document.querySelector('.floating-iframe-header');
-            
-            if (!floatingSearch || !floatingSearchInput) return;
+
+            if (!floatingSearch || !floatingSearchInput || !floatingHeader || !floatingCloseBtn) return;
+            applyFloatingIframeSecurity();
 
             let isDraggingWindow = false;
             let isResizing = false;
             let resizeDirection = '';
-            let dragOffsetX, dragOffsetY;
-            let startX, startY, startWidth, startHeight, startTop, startLeft;
+            let dragOffsetX;
+            let dragOffsetY;
+            let startX;
+            let startY;
+            let startWidth;
+            let startHeight;
+            let startTop;
+            let startLeft;
 
             floatingDragHandle.addEventListener('mousedown', (e) => {
                 isDraggingWindow = true;
@@ -1307,12 +1339,28 @@ const launchApp = () => {
 
             floatingHeader.addEventListener('mousedown', (e) => {
                 if (e.target === floatingCloseBtn || floatingCloseBtn.contains(e.target)) return;
+                if (floatingJsToggle && (e.target === floatingJsToggle || floatingJsToggle.contains(e.target))) return;
                 isDraggingWindow = true;
                 const rect = floatingSearch.getBoundingClientRect();
                 dragOffsetX = e.clientX - rect.left;
                 dragOffsetY = e.clientY - rect.top;
                 floatingSearch.classList.add('dragging');
             });
+
+            if (floatingJsToggle) {
+                floatingJsToggle.addEventListener('click', () => {
+                    floatingJsBlocked = !floatingJsBlocked;
+                    applyFloatingIframeSecurity();
+
+                    if (floatingIframe && floatingIframe.src && floatingIframe.src !== 'about:blank') {
+                        const currentUrl = floatingIframe.src;
+                        floatingIframe.src = 'about:blank';
+                        setTimeout(() => {
+                            floatingIframe.src = currentUrl;
+                        }, 0);
+                    }
+                });
+            }
 
             floatingSearchInput.addEventListener('focus', () => {
                 floatingSearch.classList.add('expanded');
@@ -1342,10 +1390,13 @@ const launchApp = () => {
                 floatingSearch.style.transform = 'translateX(-50%)';
                 floatingSearch.style.width = '500px';
                 floatingSearch.style.height = '56px';
+                if (floatingIframe) {
+                    floatingIframe.src = 'about:blank';
+                }
             });
 
             const resizeHandles = document.querySelectorAll('.resize-handle');
-            resizeHandles.forEach(handle => {
+            resizeHandles.forEach((handle) => {
                 handle.addEventListener('mousedown', (e) => {
                     if (!floatingSearch.classList.contains('searching')) return;
                     isResizing = true;
@@ -1421,6 +1472,18 @@ const launchApp = () => {
             });
         };
 
+        window.openLinkInFloatingSearch = (anchorEl) => {
+            const url = anchorEl?.dataset?.url;
+            if (!url) return false;
+
+            const floatingSearchInput = document.getElementById('floating-search-input');
+            if (floatingSearchInput) {
+                floatingSearchInput.value = url;
+            }
+            performFloatingSearch();
+            return false;
+        };
+
         // ────────────────────────────────────────────────
         // HELP MODAL CONTROL
         // ────────────────────────────────────────────────
@@ -1445,7 +1508,7 @@ const launchApp = () => {
         // ────────────────────────────────────────────────
         // INITIALIZATION
         // ────────────────────────────────────────────────
-        const init = () => 
+        const init = () => {
             noteEditor = document.getElementById('note-editor');
             notePreview = document.getElementById('note-preview');
             resizer = document.getElementById('resizer');
@@ -1470,9 +1533,10 @@ const launchApp = () => {
             window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
             
             setupFloatingSearch();
+        };
         window.addEventListener('load', init);
     </script>
-    <script type="module">
+<script type="module">
   import {
     handleGoogleCredential,
     initAiTerminal,
@@ -1481,12 +1545,23 @@ const launchApp = () => {
     loadNotesFromCloud
   } from "./chimera-frontend.js";
 
-  window.handleCredentialResponse = (res) =>
-    handleGoogleCredential(res.credential);
+  window.handleCredentialResponse = (res) => handleGoogleCredential(res.credential);
+  window.openAiTerminal = openAiTerminal;
+  window.saveNoteToCloud = saveNoteToCloud;
+  window.loadNotesFromCloud = loadNotesFromCloud;
 
   initAiTerminal();
 </script>
-<script type="module" src="chimera-frontend.js"></script>
 
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
