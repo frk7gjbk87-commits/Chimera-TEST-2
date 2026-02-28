@@ -625,6 +625,17 @@
     </style>
     
     <script src="https://unpkg.com/@tensorflow/tfjs"></script>
+    <script>
+      window.__chimeraPendingCredential = null;
+      window.__chimeraCredentialHandler = null;
+      window.handleCredentialResponse = (response) => {
+        if (typeof window.__chimeraCredentialHandler === "function") {
+          window.__chimeraCredentialHandler(response);
+          return;
+        }
+        window.__chimeraPendingCredential = response;
+      };
+    </script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -1838,7 +1849,15 @@ const launchApp = () => {
     deleteNoteFromCloud
   } from "./chimera-frontend.js";
 
-  window.handleCredentialResponse = (res) => handleGoogleCredential(res.credential);
+  window.__chimeraCredentialHandler = (res) =>
+    handleGoogleCredential(res?.credential);
+  if (window.__chimeraPendingCredential) {
+    window.__chimeraCredentialHandler(window.__chimeraPendingCredential);
+    window.__chimeraPendingCredential = null;
+  }
+
+  window.handleCredentialResponse = (res) =>
+    window.__chimeraCredentialHandler(res);
   window.openAiTerminal = openAiTerminal;
   window.saveNoteToCloud = saveNoteToCloud;
   window.loadNotesFromCloud = loadNotesFromCloud;
