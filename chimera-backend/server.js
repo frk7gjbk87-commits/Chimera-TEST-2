@@ -31,6 +31,9 @@ async function connectMongo() {
   if (!process.env.MONGO_URI) {
     throw new Error("Missing MONGO_URI in environment");
   }
+  if (db) {
+    return;
+  }
   const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();
   db = mongo.db(DB_NAME);
@@ -322,16 +325,36 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-async function start() {
+let reconnectTimer = null;
+async function connectMongoWithRetry() {
   try {
     await connectMongo();
-    app.listen(PORT, () => {
-      console.log(`Chimera backend running on port ${PORT}`);
-    });
+    if (reconnectTimer) {
+      clearInterval(reconnectTimer);
+      reconnectTimer = null;
+    }
   } catch (error) {
-    console.error("Failed to start backend:", error.message);
-    process.exit(1);
+    console.error("MongoDB connection failed:", error.message);
+    if (!reconnectTimer) {
+      reconnectTimer = setInterval(async () => {
+        try {
+          await connectMongo();
+          console.log("MongoDB reconnected");
+          clearInterval(reconnectTimer);
+          reconnectTimer = null;
+        } catch (retryError) {
+          console.error("MongoDB reconnect attempt failed:", retryError.message);
+        }
+      }, 10000);
+    }
   }
+}
+
+async function start() {
+  await connectMongoWithRetry();
+  app.listen(PORT, () => {
+    console.log(`Chimera backend running on port ${PORT}`);
+  });
 }
 
 start();
