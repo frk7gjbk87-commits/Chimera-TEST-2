@@ -784,7 +784,7 @@
     <script type="module">
         let currentNoteId = null;
         let notesData = [];
-        const dbName = 'ChimeraDB';
+        let dbName = 'ChimeraDB_guest';
         const dbVersion = 1;
         const noteStore = 'notes';
 
@@ -799,18 +799,64 @@
         let resizer;
         const DEFAULT_FOLDER = 'General';
         let activeFolderFilter = 'All';
-        const folderSeed = (() => {
+
+        const readStoredUser = () => {
             try {
-                const raw = JSON.parse(localStorage.getItem('chimeraFolders') || '[]');
+                const parsed = JSON.parse(localStorage.getItem('chimeraUser') || 'null');
+                if (!parsed || typeof parsed !== 'object') return null;
+                return parsed;
+            } catch {
+                return null;
+            }
+        };
+
+        const sanitizeUserKey = (value) =>
+            String(value || 'guest')
+                .trim()
+                .replace(/[^a-zA-Z0-9_-]/g, '_') || 'guest';
+
+        const resolveUserKey = (user = null) => {
+            const storedUser = readStoredUser();
+            return sanitizeUserKey(user?.userId || user?.sub || storedUser?.userId || storedUser?.sub || 'guest');
+        };
+
+        const buildDbName = (userKey) => `ChimeraDB_${userKey}`;
+        const buildFolderStorageKey = (userKey) => `chimeraFolders:${userKey}`;
+
+        const readFolderSeed = (storageKey) => {
+            try {
+                const raw = JSON.parse(localStorage.getItem(storageKey) || '[]');
                 if (!Array.isArray(raw)) return [];
                 return raw.map(item => String(item || '').trim()).filter(Boolean);
             } catch {
                 return [];
             }
-        })();
-        const manualFolders = new Set([DEFAULT_FOLDER, ...folderSeed]);
+        };
+
+        let activeUserKey = resolveUserKey();
+        dbName = buildDbName(activeUserKey);
+        let folderStorageKey = buildFolderStorageKey(activeUserKey);
+        let manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
+
+        const applyUserContext = (user = null, options = {}) => {
+            const { force = false } = options;
+            const nextUserKey = resolveUserKey(user);
+            if (!force && nextUserKey === activeUserKey) {
+                return false;
+            }
+
+            activeUserKey = nextUserKey;
+            dbName = buildDbName(activeUserKey);
+            folderStorageKey = buildFolderStorageKey(activeUserKey);
+            manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
+            activeFolderFilter = 'All';
+            currentNoteId = null;
+            notesData = [];
+            return true;
+        };
+
         const persistFolders = () => {
-            localStorage.setItem('chimeraFolders', JSON.stringify(Array.from(manualFolders)));
+            localStorage.setItem(folderStorageKey, JSON.stringify(Array.from(manualFolders)));
         };
 
         // ─────────────────────────────────────────────────
@@ -1099,6 +1145,15 @@
             noteEditor.value = message;
             renderPreviewAndAI();
             currentNoteId = null;
+        };
+
+        const resetUiForAccount = () => {
+            const noteList = document.getElementById('note-list');
+            if (noteList) {
+                noteList.innerHTML = '';
+            }
+            clearEditorState('Loading notes for this account...');
+            renderFolderSelectors();
         };
 
         const renderNoteList = (notes) => {
@@ -1831,9 +1886,11 @@ const launchApp = () => {
             window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
             
             setupFloatingSearch();
-            loadAllNotes();
 
             window.addEventListener('chimera-authenticated', async (event) => {
+                applyUserContext(event.detail?.user, { force: true });
+                resetUiForAccount();
+                await loadAllNotes();
                 await hydrateCloudNotes(event.detail?.notes);
             });
         };
