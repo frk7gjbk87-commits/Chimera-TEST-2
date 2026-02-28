@@ -34,6 +34,11 @@ async function connectMongo() {
   const mongo = new MongoClient(process.env.MONGO_URI);
   await mongo.connect();
   db = mongo.db(DB_NAME);
+  await db.collection("notes").createIndex(
+    { userId: 1, localId: 1 },
+    { unique: true, sparse: true }
+  );
+  await db.collection("notes").createIndex({ userId: 1, lastModified: -1 });
   console.log(`MongoDB connected (${DB_NAME})`);
 }
 
@@ -42,6 +47,37 @@ function ensureDb(req, res, next) {
     return res.status(503).json({ error: "Database not ready" });
   }
   next();
+}
+
+function normalizeNoteDoc(raw = {}, userId) {
+  const updatedAt =
+    raw.updatedAt ||
+    (raw.lastModified ? new Date(raw.lastModified).toISOString() : new Date().toISOString());
+  const lastModified = Number(raw.lastModified) || Date.parse(updatedAt) || Date.now();
+
+  return {
+    userId,
+    title: String(raw.title || "Untitled Note"),
+    content: String(raw.content || ""),
+    folder: String(raw.folder || "General"),
+    updatedAt,
+    lastModified,
+    localId: raw.localId ? String(raw.localId) : null,
+    links: Array.isArray(raw.links) ? raw.links : []
+  };
+}
+
+function serializeNoteDoc(doc) {
+  return {
+    id: doc._id?.toString?.() || "",
+    localId: doc.localId || null,
+    title: doc.title || "Untitled Note",
+    content: doc.content || "",
+    folder: doc.folder || "General",
+    updatedAt: doc.updatedAt || new Date().toISOString(),
+    lastModified: Number(doc.lastModified) || Date.now(),
+    links: Array.isArray(doc.links) ? doc.links : []
+  };
 }
 
 function sanitizeAiReply(text) {
@@ -199,21 +235,16 @@ app.get("/notes", ensureDb, auth, async (req, res) => {
   const notes = await db
     .collection("notes")
     .find({ userId: req.user.userId })
+    .sort({ lastModified: -1, updatedAt: -1 })
     .toArray();
 
-  res.json(notes);
+  res.json(notes.map(serializeNoteDoc));
 });
 
 // Save note
 app.post("/notes", ensureDb, auth, async (req, res) => {
-  const { id, title, content, updatedAt } = req.body;
-
-  const note = {
-    userId: req.user.userId,
-    title,
-    content,
-    updatedAt: updatedAt || new Date().toISOString()
-  };
+  const { id } = req.body;
+  const note = normalizeNoteDoc(req.body, req.user.userId);
 
   if (id) {
     let objectId;
@@ -228,6 +259,21 @@ app.post("/notes", ensureDb, auth, async (req, res) => {
       { $set: note }
     );
     return res.json({ ok: true, id });
+  }
+
+  if (note.localId) {
+    const existing = await db.collection("notes").findOne({
+      userId: req.user.userId,
+      localId: note.localId
+    });
+
+    if (existing?._id) {
+      await db.collection("notes").updateOne(
+        { _id: existing._id, userId: req.user.userId },
+        { $set: note }
+      );
+      return res.json({ ok: true, id: existing._id.toString() });
+    }
   }
 
   const result = await db.collection("notes").insertOne(note);

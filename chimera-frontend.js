@@ -221,7 +221,12 @@ export async function handleGoogleCredential(credential) {
       appContainer.style.display = "grid";
     }
 
-    await loadNotesFromCloud();
+    const cloudNotes = await loadNotesFromCloud();
+    window.dispatchEvent(
+      new CustomEvent("chimera-authenticated", {
+        detail: { user: chimeraUser, notes: cloudNotes }
+      })
+    );
   } catch (err) {
     console.error("Login error", err);
   }
@@ -229,7 +234,7 @@ export async function handleGoogleCredential(credential) {
 
 export async function loadNotesFromCloud() {
   if (!chimeraToken) {
-    return;
+    return [];
   }
 
   const res = await fetch(`${backendBaseUrl}/notes`, {
@@ -238,13 +243,10 @@ export async function loadNotesFromCloud() {
 
   if (!res.ok) {
     console.error("Failed to load notes");
-    return;
+    return [];
   }
 
-  const notes = await res.json();
-  if (window.renderNotesList) {
-    window.renderNotesList(notes);
-  }
+  return await res.json();
 }
 
 export async function saveNoteToCloud(note) {
@@ -263,6 +265,19 @@ export async function saveNoteToCloud(note) {
 
   const data = await res.json();
   return data.id;
+}
+
+export async function deleteNoteFromCloud(id) {
+  if (!chimeraToken || !id) {
+    return false;
+  }
+
+  const res = await fetch(`${backendBaseUrl}/notes/${id}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${chimeraToken}` }
+  });
+
+  return res.ok;
 }
 
 export function initAiTerminal() {

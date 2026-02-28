@@ -87,7 +87,7 @@
             margin-bottom: 15px;
         }
 
-        button, input[type="search"] {
+        button, input[type="search"], select {
             padding: 8px 12px;
             border: none;
             border-radius: 4px;
@@ -101,6 +101,17 @@
         button:hover {
             background-color: var(--accent-hover);
             transform: translateY(-1px);
+        }
+
+        .folder-toolbar {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            margin: 0 0 14px;
+        }
+
+        #folder-filter, #note-folder {
+            border: 1px solid var(--border-color);
         }
 
         #note-list div {
@@ -639,12 +650,17 @@
             <div class="toolbar">
                 <button id="btn-wasm-load">Load Wasm Core</button>
             </div>
+            <div class="folder-toolbar">
+                <select id="folder-filter" title="Filter notes by folder"></select>
+                <button id="btn-new-folder" type="button">+ Folder</button>
+            </div>
             <div id="note-list"></div>
         </div>
 
         <main class="editor-view">
             <div class="editor-toolbar">
                 <input type="text" id="note-title" placeholder="Note Title">
+                <select id="note-folder" title="Folder for this note"></select>
                 <button id="btn-delete-note">🗑️ Delete</button>
             </div>
             <div id="editor-container">
@@ -752,6 +768,8 @@
         let noteEditor;
         let notePreview;
         let resizer;
+        const DEFAULT_FOLDER = 'General';
+        let activeFolderFilter = 'All';
 
         // ─────────────────────────────────────────────────
         // UTILITIES
@@ -901,8 +919,8 @@
                 executeTransaction('readonly', (store) => {
                     const request = store.getAll();
                     request.onsuccess = () => {
-                        notesData = request.result;
-                        resolve(request.result);
+                        notesData = request.result.map(withNoteDefaults);
+                        resolve(notesData);
                     };
                 });
             });
@@ -937,38 +955,197 @@
         // UI AND NOTE MANAGEMENT
         // ────────────────────────────────────────────────
 
+        const normalizeFolderName = (name) => {
+            const cleaned = String(name || '').trim();
+            return cleaned || DEFAULT_FOLDER;
+        };
+
+        const parseTimestamp = (value) => {
+            const numeric = Number(value);
+            if (Number.isFinite(numeric) && numeric > 0) return numeric;
+            const parsed = Date.parse(value);
+            return Number.isFinite(parsed) ? parsed : Date.now();
+        };
+
+        const getFilteredNotes = (notes) => {
+            if (activeFolderFilter === 'All') return notes;
+            return notes.filter(note => normalizeFolderName(note.folder) === activeFolderFilter);
+        };
+
+        const withNoteDefaults = (note) => ({
+            id: note.id,
+            remoteId: note.remoteId || null,
+            title: note.title || 'Untitled Note',
+            content: note.content || '',
+            folder: normalizeFolderName(note.folder),
+            lastModified: parseTimestamp(note.lastModified),
+            links: Array.isArray(note.links) ? note.links : []
+        });
+
+        const mapCloudNoteToLocal = (cloudNote) => {
+            const localId = cloudNote.localId || `cloud-${cloudNote.id}`;
+            return withNoteDefaults({
+                id: localId,
+                remoteId: cloudNote.id || null,
+                title: cloudNote.title,
+                content: cloudNote.content,
+                folder: cloudNote.folder || DEFAULT_FOLDER,
+                lastModified: cloudNote.lastModified || cloudNote.updatedAt,
+                links: cloudNote.links
+            });
+        };
+
+        const listFolders = (notes) => {
+            const folders = new Set([DEFAULT_FOLDER]);
+            notes.forEach(note => folders.add(normalizeFolderName(note.folder)));
+            return Array.from(folders).sort((a, b) => a.localeCompare(b));
+        };
+
+        const renderFolderSelectors = () => {
+            const filterSelect = document.getElementById('folder-filter');
+            const noteFolderSelect = document.getElementById('note-folder');
+            if (!filterSelect || !noteFolderSelect) return;
+
+            const folders = listFolders(notesData);
+            if (activeFolderFilter !== 'All' && !folders.includes(activeFolderFilter)) {
+                activeFolderFilter = 'All';
+            }
+
+            filterSelect.innerHTML = '';
+            const allOption = document.createElement('option');
+            allOption.value = 'All';
+            allOption.textContent = 'All Folders';
+            filterSelect.appendChild(allOption);
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = folder;
+                filterSelect.appendChild(option);
+            });
+            filterSelect.value = activeFolderFilter;
+
+            const activeNote = notesData.find(note => note.id === currentNoteId);
+            const selectedFolder = normalizeFolderName(activeNote?.folder || noteFolderSelect.value || DEFAULT_FOLDER);
+            noteFolderSelect.innerHTML = '';
+            folders.forEach(folder => {
+                const option = document.createElement('option');
+                option.value = folder;
+                option.textContent = folder;
+                noteFolderSelect.appendChild(option);
+            });
+            if (!folders.includes(selectedFolder)) {
+                const option = document.createElement('option');
+                option.value = selectedFolder;
+                option.textContent = selectedFolder;
+                noteFolderSelect.appendChild(option);
+            }
+            noteFolderSelect.value = selectedFolder;
+        };
+
+        const renderPreviewAndAI = () => {
+            const markdownText = noteEditor.value;
+            notePreview.innerHTML = markdownToHtml(markdownText);
+            runSentimentAnalysis(markdownText);
+        };
+
+        const clearEditorState = (message) => {
+            document.getElementById('note-title').value = '';
+            noteEditor.value = message;
+            renderPreviewAndAI();
+            currentNoteId = null;
+        };
+
         const renderNoteList = (notes) => {
             const listContainer = document.getElementById('note-list');
             listContainer.innerHTML = '';
-            notes.sort((a, b) => b.lastModified - a.lastModified).forEach(note => {
+
+            const visibleNotes = getFilteredNotes(notes)
+                .slice()
+                .sort((a, b) => parseTimestamp(b.lastModified) - parseTimestamp(a.lastModified));
+
+            visibleNotes.forEach(note => {
                 const div = document.createElement('div');
                 div.textContent = note.title || 'Untitled Note';
-                div.dataset.id = note.id;
+                div.dataset.id = String(note.id);
                 div.classList.toggle('active', note.id === currentNoteId);
                 div.onclick = () => loadNote(note.id);
                 listContainer.appendChild(div);
             });
         };
 
-        const newNote = async () => {
-            const id = Date.now();
-            const note = {
-                id: id,
-                title: 'New Note!',
-                content: '# Start writing in this box here!',
-                lastModified: id,
-                links: []
-            };
-            await saveNoteToDB(note);
+        const hydrateCloudNotes = async (incomingCloudNotes = null) => {
+            const cloudNotes = Array.isArray(incomingCloudNotes)
+                ? incomingCloudNotes
+                : (typeof window.loadNotesFromCloud === 'function' ? await window.loadNotesFromCloud() : []);
+
+            if (!Array.isArray(cloudNotes) || cloudNotes.length === 0) {
+                return;
+            }
+
+            for (const cloudNote of cloudNotes) {
+                const mapped = mapCloudNoteToLocal(cloudNote);
+                const existing = await getNoteFromDB(mapped.id);
+                if (!existing) {
+                    await saveNoteToDB(mapped);
+                    continue;
+                }
+
+                const existingWithDefaults = withNoteDefaults(existing);
+                if (parseTimestamp(mapped.lastModified) >= parseTimestamp(existingWithDefaults.lastModified)) {
+                    await saveNoteToDB({
+                        ...existingWithDefaults,
+                        ...mapped,
+                        id: existingWithDefaults.id
+                    });
+                } else if (!existingWithDefaults.remoteId && mapped.remoteId) {
+                    await saveNoteToDB({
+                        ...existingWithDefaults,
+                        remoteId: mapped.remoteId
+                    });
+                }
+            }
+
             await loadAllNotes();
-            loadNote(id);
+        };
+
+        const newNote = async () => {
+            const noteFolder = document.getElementById('note-folder');
+            const chosenFolder = activeFolderFilter !== 'All'
+                ? activeFolderFilter
+                : normalizeFolderName(noteFolder?.value || DEFAULT_FOLDER);
+            const id = `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+            const note = withNoteDefaults({
+                id,
+                remoteId: null,
+                title: 'New Note',
+                content: '# Start writing in this box here!',
+                folder: chosenFolder,
+                lastModified: Date.now(),
+                links: []
+            });
+
+            await saveNoteToDB(note);
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
+            await loadNote(id);
+            await saveCurrentNote();
         };
         
         const deleteCurrentNote = async () => {
             if (!currentNoteId) return;
             const noteToDelete = currentNoteId;
-            currentNoteId = null; 
-            
+            const note = await getNoteFromDB(noteToDelete);
+            currentNoteId = null;
+
+            if (note?.remoteId && typeof window.deleteNoteFromCloud === 'function') {
+                try {
+                    await window.deleteNoteFromCloud(note.remoteId);
+                } catch (error) {
+                    console.error('Cloud delete failed:', error);
+                }
+            }
+
             await deleteNoteFromDB(noteToDelete);
             await loadAllNotes();
         };
@@ -976,62 +1153,104 @@
         const loadNote = async (id) => {
             const note = await getNoteFromDB(id);
             if (!note) return;
+            const normalized = withNoteDefaults(note);
 
-            currentNoteId = note.id;
-            document.getElementById('note-title').value = note.title;
-            noteEditor.value = note.content;
-            
+            currentNoteId = normalized.id;
+            document.getElementById('note-title').value = normalized.title;
+            noteEditor.value = normalized.content;
+            const noteFolderSelect = document.getElementById('note-folder');
+            if (noteFolderSelect) {
+                const folderValue = normalizeFolderName(normalized.folder);
+                if (![...noteFolderSelect.options].some(option => option.value === folderValue)) {
+                    const option = document.createElement('option');
+                    option.value = folderValue;
+                    option.textContent = folderValue;
+                    noteFolderSelect.appendChild(option);
+                }
+                noteFolderSelect.value = folderValue;
+            }
+
             document.querySelectorAll('#note-list div').forEach(el => el.classList.remove('active'));
-            const activeNoteElement = document.querySelector(`#note-list div[data-id="${id}"]`);
+            const activeNoteElement = document.querySelector(`#note-list div[data-id="${CSS.escape(String(id))}"]`);
             if (activeNoteElement) {
                 activeNoteElement.classList.add('active');
             }
 
-            updatePreviewAndAI();
+            renderPreviewAndAI();
         };
 
         const saveCurrentNote = async () => {
             if (!currentNoteId) return;
-            
+
+            const existing = await getNoteFromDB(currentNoteId);
+            if (!existing) return;
+            const existingWithDefaults = withNoteDefaults(existing);
             const content = noteEditor.value;
-            
-            const updatedNote = {
+            const updatedNote = withNoteDefaults({
+                ...existingWithDefaults,
                 id: currentNoteId,
                 title: document.getElementById('note-title').value || 'New Note',
-                content: content,
+                content,
+                folder: normalizeFolderName(document.getElementById('note-folder')?.value || existingWithDefaults.folder),
                 lastModified: Date.now(),
                 links: extractLinks(content)
-            };
-            
+            });
+
             await saveNoteToDB(updatedNote);
+
+            if (typeof window.saveNoteToCloud === 'function') {
+                try {
+                    const remoteId = await window.saveNoteToCloud({
+                        id: updatedNote.remoteId || undefined,
+                        localId: String(updatedNote.id),
+                        title: updatedNote.title,
+                        content: updatedNote.content,
+                        folder: updatedNote.folder,
+                        links: updatedNote.links,
+                        lastModified: updatedNote.lastModified,
+                        updatedAt: new Date(updatedNote.lastModified).toISOString()
+                    });
+                    if (remoteId && remoteId !== updatedNote.remoteId) {
+                        updatedNote.remoteId = remoteId;
+                        await saveNoteToDB(updatedNote);
+                    }
+                } catch (error) {
+                    console.error('Cloud save failed:', error);
+                }
+            }
             
             // P2P synchronization
             if (dataChannel && dataChannel.readyState === 'open') {
                 dataChannel.send(JSON.stringify({ type: 'patch', id: currentNoteId, patch: updatedNote }));
             }
             
-            const notes = await getAllNotes();
-            renderNoteList(notes);
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
         };
 
         const loadAllNotes = async () => {
-            const notes = await getAllNotes();
-            renderNoteList(notes);
-            if (notes.length > 0 && !currentNoteId) {
-                loadNote(notes[0].id);
-            } else if (notes.length === 0) {
-                 document.getElementById('note-title').value = '';
-                 noteEditor.value = 'Click the note button to get started!';
-                 notePreview.innerHTML = '<h1>Welcome</h1><p>Start writing</p>';
-                 currentNoteId = null;
+            notesData = await getAllNotes();
+            renderFolderSelectors();
+            renderNoteList(notesData);
+
+            const visibleNotes = getFilteredNotes(notesData);
+            if (visibleNotes.length === 0) {
+                const emptyMessage = notesData.length === 0
+                    ? 'Click the note button to get started!'
+                    : 'No notes in this folder yet.';
+                clearEditorState(emptyMessage);
+                return;
+            }
+
+            if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                await loadNote(visibleNotes[0].id);
             }
         };
 
         const updatePreviewAndAI = debounce(async () => {
-            const markdownText = noteEditor.value;
-            notePreview.innerHTML = markdownToHtml(markdownText);
-            runSentimentAnalysis(markdownText);
-            saveCurrentNote(); 
+            renderPreviewAndAI();
+            await saveCurrentNote();
         }, 500);
 
         // ────────────────────────────────────────────────
@@ -1512,6 +1731,8 @@ const launchApp = () => {
             noteEditor = document.getElementById('note-editor');
             notePreview = document.getElementById('note-preview');
             resizer = document.getElementById('resizer');
+            const folderFilter = document.getElementById('folder-filter');
+            const noteFolder = document.getElementById('note-folder');
             
             if(noteEditor && notePreview && resizer) {
                 setupResizer();
@@ -1526,13 +1747,49 @@ const launchApp = () => {
             document.getElementById('btn-wasm-load').onclick = loadWASM;
             
             document.getElementById('btn-graph-view').onclick = () => toggleGraphView(true);
+            document.getElementById('btn-new-folder').onclick = async () => {
+                const folderInput = window.prompt('New folder name:');
+                if (!folderInput) return;
+                const folderName = normalizeFolderName(folderInput);
+                activeFolderFilter = folderName;
+                renderFolderSelectors();
+                if (folderFilter) folderFilter.value = folderName;
+                if (noteFolder) noteFolder.value = folderName;
+                if (currentNoteId) {
+                    await saveCurrentNote();
+                }
+            };
 
-            document.getElementById('note-title').onclick = updatePreviewAndAI;
+            if (folderFilter) {
+                folderFilter.onchange = async (event) => {
+                    activeFolderFilter = event.target.value;
+                    renderNoteList(notesData);
+                    const visibleNotes = getFilteredNotes(notesData);
+                    if (visibleNotes.length === 0) {
+                        clearEditorState('No notes in this folder yet.');
+                        return;
+                    }
+                    if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                        await loadNote(visibleNotes[0].id);
+                    }
+                };
+            }
+
+            if (noteFolder) {
+                noteFolder.onchange = updatePreviewAndAI;
+            }
+
+            document.getElementById('note-title').oninput = updatePreviewAndAI;
             noteEditor.oninput = updatePreviewAndAI;
             
             window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
             
             setupFloatingSearch();
+            loadAllNotes();
+
+            window.addEventListener('chimera-authenticated', async (event) => {
+                await hydrateCloudNotes(event.detail?.notes);
+            });
         };
         window.addEventListener('load', init);
     </script>
@@ -1542,26 +1799,19 @@ const launchApp = () => {
     initAiTerminal,
     openAiTerminal,
     saveNoteToCloud,
-    loadNotesFromCloud
+    loadNotesFromCloud,
+    deleteNoteFromCloud
   } from "./chimera-frontend.js";
 
   window.handleCredentialResponse = (res) => handleGoogleCredential(res.credential);
   window.openAiTerminal = openAiTerminal;
   window.saveNoteToCloud = saveNoteToCloud;
   window.loadNotesFromCloud = loadNotesFromCloud;
+  window.deleteNoteFromCloud = deleteNoteFromCloud;
 
   initAiTerminal();
 </script>
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
 
