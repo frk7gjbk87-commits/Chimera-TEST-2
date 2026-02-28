@@ -835,32 +835,6 @@
         <canvas id="graph-canvas"></canvas>
     </div>
 
-    <!-- Floating Search Bar -->
-    <div id="floating-search" class="floating-search">
-        <button id="floating-drag-handle" class="floating-drag-handle" title="Drag to move">☰</button>
-        <input type="text" id="floating-search-input" placeholder="search anything">
-        <button id="floating-search-btn" class="floating-search-btn">🔍</button>
-        <div id="floating-iframe-container" class="floating-iframe-container" style="display: none;">
-            <div class="floating-iframe-header">
-                <span class="floating-title">Browser</span>
-                <div class="floating-iframe-controls">
-                    <button id="floating-js-toggle" class="floating-js-toggle" type="button">JS Blocker: ON</button>
-                    <button id="floating-close-btn" class="floating-close-btn">X</button>
-                </div>
-            </div>
-            <iframe id="floating-iframe" class="floating-iframe" src="" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>
-            <!-- Resize handles -->
-            <div class="resize-handle resize-top"></div>
-            <div class="resize-handle resize-bottom"></div>
-            <div class="resize-handle resize-left"></div>
-            <div class="resize-handle resize-right"></div>
-            <div class="resize-handle resize-top-left"></div>
-            <div class="resize-handle resize-top-right"></div>
-            <div class="resize-handle resize-bottom-left"></div>
-            <div class="resize-handle resize-bottom-right"></div>
-        </div>
-    </div>
-
     <!-- Help Modal -->
     <div id="help-modal" class="help-modal">
         <div class="help-modal-content">
@@ -1196,7 +1170,7 @@
 
             // Links
             html = html.replace(/\[(.*?)\]\((.*?)\)/g, (match, text, url) => {
-                return `<a href="#" class="markdown-link" data-url="${url}" onclick="return openLinkInFloatingSearch(this)">${text}</a>`;
+                return `<a href="${url}" class="markdown-link" target="_blank" rel="noopener noreferrer">${text}</a>`;
             });
             
             // Images
@@ -1947,237 +1921,6 @@ const launchApp = () => {
         // ────────────────────────────────────────────────
         // FLOATING SEARCH BAR - IFRAME SNUB BROWSER
         // ───���────────────────────────────────────────────
-        let floatingJsBlocked = true;
-
-        const getFloatingIframeSandbox = () =>
-            floatingJsBlocked
-                ? 'allow-forms allow-popups allow-popups-to-escape-sandbox'
-                : 'allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin';
-
-        const applyFloatingIframeSecurity = () => {
-            const floatingIframe = document.getElementById('floating-iframe');
-            const floatingJsToggle = document.getElementById('floating-js-toggle');
-            if (!floatingIframe) return;
-
-            floatingIframe.setAttribute('sandbox', getFloatingIframeSandbox());
-            floatingIframe.setAttribute('referrerpolicy', 'no-referrer');
-
-            if (floatingJsToggle) {
-                floatingJsToggle.textContent = floatingJsBlocked ? 'JS Blocker: ON' : 'JS Blocker: OFF';
-                floatingJsToggle.classList.toggle('off', !floatingJsBlocked);
-            }
-        };
-
-        const performFloatingSearch = () => {
-            const floatingSearch = document.getElementById('floating-search');
-            const floatingSearchInput = document.getElementById('floating-search-input');
-            const floatingIframeContainer = document.getElementById('floating-iframe-container');
-            const floatingIframe = document.getElementById('floating-iframe');
-            const query = floatingSearchInput.value.trim();
-            
-            if (!query) return;
-
-            floatingSearch.classList.add('searching');
-            floatingIframeContainer.style.display = 'flex';
-
-            let url;
-            
-            // Determine if input is a URL or search query
-            if (query.startsWith('http://') || query.startsWith('https://')) {
-                url = query;
-            } else if (query.includes('.') && !query.includes(' ')) {
-                // Likely a domain
-                if (!query.startsWith('www.')) {
-                    url = 'https://www.' + query;
-                } else {
-                    url = 'https://' + query;
-                }
-            } else {
-                // Search query - use DuckDuckGo instead of Bing
-                url = `https://duckduckgo.com/?q=${encodeURIComponent(query)}`;
-            }
-
-            console.log('Loading URL in iframe browser:', url);
-            applyFloatingIframeSecurity();
-            floatingIframe.src = url;
-        };
-
-        const setupFloatingSearch = () => {
-            const floatingSearch = document.getElementById('floating-search');
-            const floatingSearchInput = document.getElementById('floating-search-input');
-            const floatingSearchBtn = document.getElementById('floating-search-btn');
-            const floatingDragHandle = document.getElementById('floating-drag-handle');
-            const floatingCloseBtn = document.getElementById('floating-close-btn');
-            const floatingJsToggle = document.getElementById('floating-js-toggle');
-            const floatingIframeContainer = document.getElementById('floating-iframe-container');
-            const floatingIframe = document.getElementById('floating-iframe');
-            const floatingHeader = document.querySelector('.floating-iframe-header');
-
-            if (!floatingSearch || !floatingSearchInput || !floatingHeader || !floatingCloseBtn) return;
-            applyFloatingIframeSecurity();
-
-            let isDraggingWindow = false;
-            let isResizing = false;
-            let resizeDirection = '';
-            let dragOffsetX;
-            let dragOffsetY;
-            let startX;
-            let startY;
-            let startWidth;
-            let startHeight;
-            let startTop;
-            let startLeft;
-
-            floatingDragHandle.addEventListener('mousedown', (e) => {
-                isDraggingWindow = true;
-                const rect = floatingSearch.getBoundingClientRect();
-                dragOffsetX = e.clientX - rect.left;
-                dragOffsetY = e.clientY - rect.top;
-                floatingSearch.classList.add('dragging');
-            });
-
-            floatingHeader.addEventListener('mousedown', (e) => {
-                if (e.target === floatingCloseBtn || floatingCloseBtn.contains(e.target)) return;
-                if (floatingJsToggle && (e.target === floatingJsToggle || floatingJsToggle.contains(e.target))) return;
-                isDraggingWindow = true;
-                const rect = floatingSearch.getBoundingClientRect();
-                dragOffsetX = e.clientX - rect.left;
-                dragOffsetY = e.clientY - rect.top;
-                floatingSearch.classList.add('dragging');
-            });
-
-            if (floatingJsToggle) {
-                floatingJsToggle.addEventListener('click', () => {
-                    floatingJsBlocked = !floatingJsBlocked;
-                    applyFloatingIframeSecurity();
-
-                    if (floatingIframe && floatingIframe.src && floatingIframe.src !== 'about:blank') {
-                        const currentUrl = floatingIframe.src;
-                        floatingIframe.src = currentUrl;
-                    }
-                });
-            }
-
-            floatingSearchInput.addEventListener('focus', () => {
-                floatingSearch.classList.add('expanded');
-            });
-
-            floatingSearchInput.addEventListener('blur', () => {
-                if (floatingSearchInput.value.trim() === '' && !floatingSearch.classList.contains('searching')) {
-                    floatingSearch.classList.remove('expanded');
-                }
-            });
-
-            floatingSearchBtn.addEventListener('click', performFloatingSearch);
-            floatingSearchInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    performFloatingSearch();
-                }
-            });
-
-            floatingCloseBtn.addEventListener('click', () => {
-                floatingSearch.classList.remove('searching');
-                floatingIframeContainer.style.display = 'none';
-                floatingSearchInput.value = '';
-                floatingSearch.classList.remove('expanded');
-                floatingSearch.style.position = 'fixed';
-                floatingSearch.style.top = '30px';
-                floatingSearch.style.left = '50%';
-                floatingSearch.style.transform = 'translateX(-50%)';
-                floatingSearch.style.width = '500px';
-                floatingSearch.style.height = '56px';
-            });
-
-            const resizeHandles = document.querySelectorAll('.resize-handle');
-            resizeHandles.forEach((handle) => {
-                handle.addEventListener('mousedown', (e) => {
-                    if (!floatingSearch.classList.contains('searching')) return;
-                    isResizing = true;
-                    const classes = handle.className;
-                    if (classes.includes('resize-top-left')) resizeDirection = 'tl';
-                    else if (classes.includes('resize-top-right')) resizeDirection = 'tr';
-                    else if (classes.includes('resize-bottom-left')) resizeDirection = 'bl';
-                    else if (classes.includes('resize-bottom-right')) resizeDirection = 'br';
-                    else if (classes.includes('resize-top')) resizeDirection = 't';
-                    else if (classes.includes('resize-bottom')) resizeDirection = 'b';
-                    else if (classes.includes('resize-left')) resizeDirection = 'l';
-                    else if (classes.includes('resize-right')) resizeDirection = 'r';
-
-                    const rect = floatingSearch.getBoundingClientRect();
-                    startX = e.clientX;
-                    startY = e.clientY;
-                    startWidth = rect.width;
-                    startHeight = rect.height;
-                    startTop = rect.top;
-                    startLeft = rect.left;
-                    e.preventDefault();
-                });
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (isDraggingWindow) {
-                    floatingSearch.style.top = (e.clientY - dragOffsetY) + 'px';
-                    floatingSearch.style.left = (e.clientX - dragOffsetX) + 'px';
-                    floatingSearch.style.transform = 'none';
-                    return;
-                }
-
-                if (!isResizing) return;
-                const deltaX = e.clientX - startX;
-                const deltaY = e.clientY - startY;
-
-                let newWidth = startWidth;
-                let newHeight = startHeight;
-                let newTop = startTop;
-                let newLeft = startLeft;
-
-                if (resizeDirection.includes('l')) {
-                    newWidth = startWidth - deltaX;
-                    newLeft = startLeft + deltaX;
-                } else if (resizeDirection.includes('r')) {
-                    newWidth = startWidth + deltaX;
-                }
-
-                if (resizeDirection.includes('t')) {
-                    newHeight = startHeight - deltaY;
-                    newTop = startTop + deltaY;
-                } else if (resizeDirection.includes('b')) {
-                    newHeight = startHeight + deltaY;
-                }
-
-                if (newWidth >= 150 && newHeight >= 100) {
-                    floatingSearch.style.width = newWidth + 'px';
-                    floatingSearch.style.height = newHeight + 'px';
-                    if (resizeDirection.includes('l') || resizeDirection.includes('t')) {
-                        floatingSearch.style.top = newTop + 'px';
-                        floatingSearch.style.left = newLeft + 'px';
-                    }
-                }
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (isDraggingWindow) {
-                    isDraggingWindow = false;
-                    floatingSearch.classList.remove('dragging');
-                }
-                isResizing = false;
-                resizeDirection = '';
-            });
-        };
-
-        window.openLinkInFloatingSearch = (anchorEl) => {
-            const url = anchorEl?.dataset?.url;
-            if (!url) return false;
-
-            const floatingSearchInput = document.getElementById('floating-search-input');
-            if (floatingSearchInput) {
-                floatingSearchInput.value = url;
-            }
-            performFloatingSearch();
-            return false;
-        };
-
-        // ────────────────────────────────────────────────
         // HELP MODAL CONTROL
         // ────────────────────────────────────────────────
         const helpModal = document.getElementById('help-modal');
@@ -2318,8 +2061,6 @@ const launchApp = () => {
             noteEditor.oninput = updatePreviewAndAI;
             
             window.onresize = () => { if (graphCanvas.style.display !== 'none') renderGraph(); };
-            
-            setupFloatingSearch();
 
             window.addEventListener('chimera-authenticated', async (event) => {
                 applyUserContext(event.detail?.user, { force: true });
@@ -2366,6 +2107,7 @@ const launchApp = () => {
 
 </body>
 </html>
+
 
 
 
