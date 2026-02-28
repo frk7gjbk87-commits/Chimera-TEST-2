@@ -10,11 +10,20 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const DB_NAME = process.env.MONGO_DB_NAME || "chimera";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
-const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-1.5-pro"];
+const GEMINI_MODEL_FALLBACKS = [
+  "gemini-2.0-flash",
+  "gemini-2.0-flash-lite",
+  "gemini-2.5-flash"
+];
+const GEMINI_API_VERSIONS = ["v1beta", "v1"];
+const GEMINI_MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 const corsOrigins = (process.env.CORS_ORIGIN || "*")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+let cachedGeminiModels = [];
+let geminiModelsCachedAt = 0;
 
 app.use(
   cors({
@@ -112,6 +121,65 @@ function mapHistoryToContents(history) {
     .filter(Boolean);
 }
 
+function normalizeModelName(model) {
+  const value = String(model || "").trim();
+  if (!value) {
+    return "";
+  }
+  return value.startsWith("models/") ? value.slice("models/".length) : value;
+}
+
+function rankGeminiModel(model) {
+  const name = normalizeModelName(model).toLowerCase();
+  let score = 0;
+  if (name.includes("flash")) score += 10;
+  if (name.includes("2.5")) score += 5;
+  if (name.includes("2.0")) score += 4;
+  if (name.includes("lite")) score -= 2;
+  return score;
+}
+
+async function fetchAvailableGeminiModels(apiKey) {
+  const now = Date.now();
+  if (
+    cachedGeminiModels.length > 0 &&
+    now - geminiModelsCachedAt < GEMINI_MODEL_CACHE_TTL_MS
+  ) {
+    return cachedGeminiModels;
+  }
+
+  for (const apiVersion of GEMINI_API_VERSIONS) {
+    const listUrl =
+      `https://generativelanguage.googleapis.com/${apiVersion}/models?key=` +
+      `${encodeURIComponent(apiKey)}`;
+    try {
+      const response = await fetch(listUrl);
+      if (!response.ok) {
+        continue;
+      }
+
+      const data = await response.json();
+      const available = (data?.models || [])
+        .filter((model) =>
+          Array.isArray(model?.supportedGenerationMethods) &&
+          model.supportedGenerationMethods.includes("generateContent")
+        )
+        .map((model) => normalizeModelName(model?.name))
+        .filter((model) => model && model.includes("gemini"));
+
+      if (available.length > 0) {
+        cachedGeminiModels = Array.from(new Set(available));
+        geminiModelsCachedAt = now;
+        return cachedGeminiModels;
+      }
+    } catch {
+      // Ignore list-model errors and continue to next API version.
+    }
+  }
+
+  return cachedGeminiModels;
+}
+
 async function callGemini({ message, history }) {
   if (!process.env.GEMINI_API_KEY) {
     throw new Error("Missing GEMINI_API_KEY in environment");
@@ -123,56 +191,74 @@ async function callGemini({ message, history }) {
     parts: [{ text: message }]
   });
 
-  const models = Array.from(new Set([GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS]));
+  const configuredModels = Array.from(
+    new Set(
+      [GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS]
+        .map((model) => normalizeModelName(model))
+        .filter(Boolean)
+    )
+  );
+  const discoveredModels = await fetchAvailableGeminiModels(
+    process.env.GEMINI_API_KEY
+  );
+  const models = Array.from(
+    new Set([...configuredModels, ...discoveredModels])
+  )
+    .sort((a, b) => rankGeminiModel(b) - rankGeminiModel(a))
+    .slice(0, 10);
   let lastError;
 
   for (const model of models) {
-    try {
-      const url =
-        `https://generativelanguage.googleapis.com/v1beta/models/` +
-        `${encodeURIComponent(model)}:generateContent?key=` +
-        `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+    for (const apiVersion of GEMINI_API_VERSIONS) {
+      try {
+        const url =
+          `https://generativelanguage.googleapis.com/${apiVersion}/models/` +
+          `${encodeURIComponent(model)}:generateContent?key=` +
+          `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [
-              {
-                text:
-                  "You are Chimera AI. Never mention model providers, vendors, or product names. " +
-                  "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
-              }
-            ]
-          },
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 700
-          },
-          contents
-        })
-      });
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: {
+              parts: [
+                {
+                  text:
+                    "You are Chimera AI. Never mention model providers, vendors, or product names. " +
+                    "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
+                }
+              ]
+            },
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 700
+            },
+            contents
+          })
+        });
 
-      if (!response.ok) {
-        const errorBody = (await response.text()).slice(0, 500);
-        throw new Error(`Model ${model} failed (${response.status}): ${errorBody}`);
+        if (!response.ok) {
+          const errorBody = (await response.text()).slice(0, 500);
+          throw new Error(
+            `Model ${model} @ ${apiVersion} failed (${response.status}): ${errorBody}`
+          );
+        }
+
+        const data = await response.json();
+        const reply = (data?.candidates?.[0]?.content?.parts || [])
+          .map((part) => String(part?.text || ""))
+          .join("\n")
+          .trim();
+
+        if (!reply) {
+          throw new Error(`Model ${model} @ ${apiVersion} returned empty output`);
+        }
+
+        return sanitizeAiReply(reply);
+      } catch (error) {
+        lastError = error;
+        console.error(`AI model attempt failed (${model} @ ${apiVersion}):`, error.message);
       }
-
-      const data = await response.json();
-      const reply = (data?.candidates?.[0]?.content?.parts || [])
-        .map((part) => String(part?.text || ""))
-        .join("\n")
-        .trim();
-
-      if (!reply) {
-        throw new Error(`Model ${model} returned empty output`);
-      }
-
-      return sanitizeAiReply(reply);
-    } catch (error) {
-      lastError = error;
-      console.error(`AI model attempt failed (${model}):`, error.message);
     }
   }
 
