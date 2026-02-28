@@ -1308,7 +1308,7 @@
         // ────────────────────────────────────────────────
         let wasmInstance = null;
         
-        const WASM_DATA_B64 = 'AGFzbQEAAAABhQFgAn9/AX8DAgEABwUBBAFhZGQAAwoBAQABBwsAQCADEL8=';
+        const WASM_DATA_B64 = 'AGFzbQEAAAABBwFgAn9/AX8DAgEABwcBA2FkZAAACgkBBwAgACABags=';
 
         const base64ToArrayBuffer = (base64) => {
             const binary_string = atob(base64);
@@ -1324,8 +1324,8 @@
             const wasmButton = document.getElementById('btn-wasm-load');
             const statusIndicator = document.getElementById('ai-sentiment');
             try {
-                wasmButton.textContent = '🚀 Loading WASM...';
-                statusIndicator.textContent = '🧠 AI: Waiting on WASM...'; 
+                wasmButton.textContent = 'Loading WASM...';
+                statusIndicator.textContent = 'AI: Waiting on WASM...'; 
 
                 const bytes = base64ToArrayBuffer(WASM_DATA_B64);
                 
@@ -1341,8 +1341,8 @@
                 const module = await WebAssembly.instantiate(bytes, importObject);
                 wasmInstance = module.instance.exports;
                 
-                wasmButton.textContent = '✅ WASM Core Loaded';
-                statusIndicator.textContent = '🧠 AI: Ready'; 
+                wasmButton.textContent = 'WASM Core Loaded';
+                statusIndicator.textContent = 'AI: Ready'; 
                 console.log('WASM Core Loaded for high-speed tasks.');
                 
                 if (wasmInstance.add) {
@@ -1353,8 +1353,8 @@
             } catch (e) {
                 const errorMessage = e.message || String(e);
                 console.error('WASM loading failed:', e);
-                wasmButton.textContent = '❌ WASM Failed';
-                statusIndicator.textContent = `❌ WASM Error: ${errorMessage.substring(0, 40)}...`;
+                wasmButton.textContent = 'WASM Failed';
+                statusIndicator.textContent = `AI: WASM Error: ${errorMessage.substring(0, 40)}...`;
             }
         };
 
