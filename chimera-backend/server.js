@@ -10,6 +10,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const DB_NAME = process.env.MONGO_DB_NAME || "chimera";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const GEMINI_MODEL_FALLBACKS = ["gemini-1.5-flash", "gemini-1.5-pro"];
 const corsOrigins = (process.env.CORS_ORIGIN || "*")
   .split(",")
   .map((origin) => origin.trim())
@@ -27,6 +28,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // MongoDB
 let db;
+let mongoLastError = null;
 async function connectMongo() {
   if (!process.env.MONGO_URI) {
     throw new Error("Missing MONGO_URI in environment");
@@ -42,12 +44,16 @@ async function connectMongo() {
     { unique: true, sparse: true }
   );
   await db.collection("notes").createIndex({ userId: 1, lastModified: -1 });
+  mongoLastError = null;
   console.log(`MongoDB connected (${DB_NAME})`);
 }
 
 function ensureDb(req, res, next) {
   if (!db) {
-    return res.status(503).json({ error: "Database not ready" });
+    return res.status(503).json({
+      error: "Database not ready",
+      details: mongoLastError || "Mongo connection has not been established yet"
+    });
   }
   next();
 }
@@ -111,54 +117,66 @@ async function callGemini({ message, history }) {
     throw new Error("Missing GEMINI_API_KEY in environment");
   }
 
-  const url =
-    `https://generativelanguage.googleapis.com/v1beta/models/` +
-    `${encodeURIComponent(GEMINI_MODEL)}:generateContent?key=` +
-    `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
-
   const contents = mapHistoryToContents(history);
   contents.push({
     role: "user",
     parts: [{ text: message }]
   });
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [
-          {
-            text:
-              "You are Chimera AI. Never mention model providers, vendors, or product names. " +
-              "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
-          }
-        ]
-      },
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 700
-      },
-      contents
-    })
-  });
+  const models = Array.from(new Set([GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS]));
+  let lastError;
 
-  if (!response.ok) {
-    const errorBody = (await response.text()).slice(0, 600);
-    throw new Error(`AI provider request failed (${response.status}): ${errorBody}`);
+  for (const model of models) {
+    try {
+      const url =
+        `https://generativelanguage.googleapis.com/v1beta/models/` +
+        `${encodeURIComponent(model)}:generateContent?key=` +
+        `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [
+              {
+                text:
+                  "You are Chimera AI. Never mention model providers, vendors, or product names. " +
+                  "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
+              }
+            ]
+          },
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 700
+          },
+          contents
+        })
+      });
+
+      if (!response.ok) {
+        const errorBody = (await response.text()).slice(0, 500);
+        throw new Error(`Model ${model} failed (${response.status}): ${errorBody}`);
+      }
+
+      const data = await response.json();
+      const reply = (data?.candidates?.[0]?.content?.parts || [])
+        .map((part) => String(part?.text || ""))
+        .join("\n")
+        .trim();
+
+      if (!reply) {
+        throw new Error(`Model ${model} returned empty output`);
+      }
+
+      return sanitizeAiReply(reply);
+    } catch (error) {
+      lastError = error;
+      console.error(`AI model attempt failed (${model}):`, error.message);
+    }
   }
 
-  const data = await response.json();
-  const reply = (data?.candidates?.[0]?.content?.parts || [])
-    .map((part) => String(part?.text || ""))
-    .join("\n")
-    .trim();
-
-  if (!reply) {
-    throw new Error("AI provider returned an empty reply");
-  }
-
-  return sanitizeAiReply(reply);
+  throw lastError || new Error("No AI model could produce a reply");
 }
 
 // Verify Google ID token
@@ -202,6 +220,7 @@ app.get("/health", (req, res) => {
   res.json({
     ok: true,
     db: Boolean(db),
+    dbError: mongoLastError,
     timestamp: new Date().toISOString()
   });
 });
@@ -316,7 +335,10 @@ app.post("/ai/chat", async (req, res) => {
     res.json({ reply });
   } catch (error) {
     console.error("AI chat failed:", error.message);
-    res.status(503).json({ error: "AI service unavailable" });
+    res.status(503).json({
+      error:
+        "AI service unavailable. Check GEMINI_API_KEY/model in backend env and Render logs."
+    });
   }
 });
 
@@ -334,6 +356,7 @@ async function connectMongoWithRetry() {
       reconnectTimer = null;
     }
   } catch (error) {
+    mongoLastError = error.message;
     console.error("MongoDB connection failed:", error.message);
     if (!reconnectTimer) {
       reconnectTimer = setInterval(async () => {
@@ -343,6 +366,7 @@ async function connectMongoWithRetry() {
           clearInterval(reconnectTimer);
           reconnectTimer = null;
         } catch (retryError) {
+          mongoLastError = retryError.message;
           console.error("MongoDB reconnect attempt failed:", retryError.message);
         }
       }, 10000);

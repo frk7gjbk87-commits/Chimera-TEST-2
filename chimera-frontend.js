@@ -184,7 +184,16 @@ async function sendAiMessage(message) {
     });
 
     if (!response.ok) {
-      return "AI endpoint is unavailable right now.";
+      const errorPayload = await response
+        .json()
+        .catch(() => ({ error: "" }));
+      if (response.status === 503) {
+        return (
+          errorPayload.error ||
+          "AI service is waking up or misconfigured on the backend."
+        );
+      }
+      return errorPayload.error || "AI request failed.";
     }
 
     const data = await response.json();

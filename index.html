@@ -105,13 +105,29 @@
 
         .folder-toolbar {
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: auto 1fr auto;
+            align-items: center;
             gap: 8px;
             margin: 0 0 14px;
         }
 
         #folder-filter, #note-folder {
             border: 1px solid var(--border-color);
+        }
+
+        .folder-label {
+            font-size: 12px;
+            color: #bac6d1;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .folder-label-inline {
+            font-size: 12px;
+            color: #bac6d1;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
         }
 
         #note-list div {
@@ -651,6 +667,7 @@
                 <button id="btn-wasm-load">Load Wasm Core</button>
             </div>
             <div class="folder-toolbar">
+                <label class="folder-label" for="folder-filter">Filter</label>
                 <select id="folder-filter" title="Filter notes by folder"></select>
                 <button id="btn-new-folder" type="button">+ Folder</button>
             </div>
@@ -660,6 +677,7 @@
         <main class="editor-view">
             <div class="editor-toolbar">
                 <input type="text" id="note-title" placeholder="Note Title">
+                <label class="folder-label-inline" for="note-folder">Note Folder</label>
                 <select id="note-folder" title="Folder for this note"></select>
                 <button id="btn-delete-note">🗑️ Delete</button>
             </div>
@@ -770,6 +788,19 @@
         let resizer;
         const DEFAULT_FOLDER = 'General';
         let activeFolderFilter = 'All';
+        const folderSeed = (() => {
+            try {
+                const raw = JSON.parse(localStorage.getItem('chimeraFolders') || '[]');
+                if (!Array.isArray(raw)) return [];
+                return raw.map(item => String(item || '').trim()).filter(Boolean);
+            } catch {
+                return [];
+            }
+        })();
+        const manualFolders = new Set([DEFAULT_FOLDER, ...folderSeed]);
+        const persistFolders = () => {
+            localStorage.setItem('chimeraFolders', JSON.stringify(Array.from(manualFolders)));
+        };
 
         // ─────────────────────────────────────────────────
         // UTILITIES
@@ -996,8 +1027,12 @@
         };
 
         const listFolders = (notes) => {
-            const folders = new Set([DEFAULT_FOLDER]);
+            const folders = new Set(manualFolders);
             notes.forEach(note => folders.add(normalizeFolderName(note.folder)));
+            if (folders.size !== manualFolders.size) {
+                folders.forEach(folder => manualFolders.add(folder));
+                persistFolders();
+            }
             return Array.from(folders).sort((a, b) => a.localeCompare(b));
         };
 
@@ -1113,6 +1148,8 @@
             const chosenFolder = activeFolderFilter !== 'All'
                 ? activeFolderFilter
                 : normalizeFolderName(noteFolder?.value || DEFAULT_FOLDER);
+            manualFolders.add(chosenFolder);
+            persistFolders();
             const id = `local-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
             const note = withNoteDefaults({
                 id,
@@ -1195,6 +1232,8 @@
                 lastModified: Date.now(),
                 links: extractLinks(content)
             });
+            manualFolders.add(updatedNote.folder);
+            persistFolders();
 
             await saveNoteToDB(updatedNote);
 
@@ -1573,10 +1612,7 @@ const launchApp = () => {
 
                     if (floatingIframe && floatingIframe.src && floatingIframe.src !== 'about:blank') {
                         const currentUrl = floatingIframe.src;
-                        floatingIframe.src = 'about:blank';
-                        setTimeout(() => {
-                            floatingIframe.src = currentUrl;
-                        }, 0);
+                        floatingIframe.src = currentUrl;
                     }
                 });
             }
@@ -1609,9 +1645,6 @@ const launchApp = () => {
                 floatingSearch.style.transform = 'translateX(-50%)';
                 floatingSearch.style.width = '500px';
                 floatingSearch.style.height = '56px';
-                if (floatingIframe) {
-                    floatingIframe.src = 'about:blank';
-                }
             });
 
             const resizeHandles = document.querySelectorAll('.resize-handle');
@@ -1751,6 +1784,8 @@ const launchApp = () => {
                 const folderInput = window.prompt('New folder name:');
                 if (!folderInput) return;
                 const folderName = normalizeFolderName(folderInput);
+                manualFolders.add(folderName);
+                persistFolders();
                 activeFolderFilter = folderName;
                 renderFolderSelectors();
                 if (folderFilter) folderFilter.value = folderName;
@@ -1814,4 +1849,6 @@ const launchApp = () => {
 
 </body>
 </html>
+
+
 
