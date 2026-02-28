@@ -11,13 +11,11 @@ const PORT = Number(process.env.PORT || 4000);
 const DB_NAME = process.env.MONGO_DB_NAME || "chimera";
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GEMINI_MODEL_FALLBACKS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
   "gemini-2.0-flash",
   "gemini-2.0-flash-lite",
-  "gemini-1.5-flash"
+  "gemini-2.5-flash"
 ];
-const GEMINI_API_VERSIONS = ["v1", "v1beta"];
+const GEMINI_API_VERSIONS = ["v1beta", "v1"];
 const GEMINI_MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
 const corsOrigins = (process.env.CORS_ORIGIN || "*")
   .split(",")
@@ -203,23 +201,11 @@ async function callGemini({ message, history }) {
   const discoveredModels = await fetchAvailableGeminiModels(
     process.env.GEMINI_API_KEY
   );
-  const discoveredSet = new Set(discoveredModels.map((model) => normalizeModelName(model)));
-  const models = (
-    discoveredModels.length > 0
-      ? Array.from(
-          new Set([
-            ...configuredModels.filter((model) => discoveredSet.has(model)),
-            ...discoveredModels
-          ])
-        )
-      : Array.from(new Set([...configuredModels, ...discoveredModels]))
+  const models = Array.from(
+    new Set([...configuredModels, ...discoveredModels])
   )
     .sort((a, b) => rankGeminiModel(b) - rankGeminiModel(a))
-    .slice(0, 12);
-
-  if (models.length === 0) {
-    throw new Error("No Gemini models available from configuration or discovery");
-  }
+    .slice(0, 10);
   let lastError;
 
   for (const model of models) {

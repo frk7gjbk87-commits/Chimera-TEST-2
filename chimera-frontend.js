@@ -12,9 +12,7 @@ export let chimeraToken = null;
 const backendBaseUrl =
   window.CHIMERA_BACKEND_URL ||
   localStorage.getItem("chimeraBackendUrl") ||
-  (window.location.hostname.includes("github.io")
-    ? "https://chimera-test-2.onrender.com"
-    : "http://localhost:4000");
+  "http://localhost:4000";
 
 const MAX_HISTORY_MESSAGES = 12;
 const aiState = {
