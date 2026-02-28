@@ -20,6 +20,35 @@ const aiState = {
   history: []
 };
 
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = token.split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function showMainApp() {
+  const startPage = document.getElementById("start-page");
+  const appContainer = document.getElementById("app-container");
+  if (startPage && appContainer) {
+    startPage.style.display = "none";
+    appContainer.style.display = "grid";
+  }
+}
+
+function syncUserUi() {
+  const userInfo = document.getElementById("user-info");
+  if (userInfo && chimeraUser?.name) {
+    userInfo.textContent = `Signed in as ${chimeraUser.name}`;
+  }
+}
+
 function getJsonHeaders() {
   const headers = { "Content-Type": "application/json" };
   if (chimeraToken) {
@@ -192,6 +221,28 @@ async function submitAiMessage() {
 }
 
 export async function handleGoogleCredential(credential) {
+  if (!credential) {
+    console.error("Missing Google credential");
+    return;
+  }
+
+  // Always allow app entry after Google sign-in, even if backend is unreachable.
+  chimeraToken = credential;
+  const payload = decodeJwtPayload(credential);
+  if (payload) {
+    chimeraUser = {
+      userId: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture
+    };
+    localStorage.setItem("chimeraUser", JSON.stringify(chimeraUser));
+  }
+  syncUserUi();
+  showMainApp();
+
+  let cloudNotes = [];
+
   try {
     const res = await fetch(`${backendBaseUrl}/auth/google`, {
       method: "POST",
@@ -199,37 +250,32 @@ export async function handleGoogleCredential(credential) {
       body: JSON.stringify({ credential })
     });
 
-    if (!res.ok) {
-      console.error("Auth failed");
-      return;
+    if (res.ok) {
+      const data = await res.json();
+      chimeraUser = data.user || chimeraUser;
+      chimeraToken = data.token || chimeraToken;
+      if (chimeraUser) {
+        localStorage.setItem("chimeraUser", JSON.stringify(chimeraUser));
+      }
+      syncUserUi();
+    } else {
+      console.warn(`Backend auth failed (${res.status}); continuing in local mode.`);
     }
-
-    const data = await res.json();
-    chimeraUser = data.user;
-    chimeraToken = data.token;
-    localStorage.setItem("chimeraUser", JSON.stringify(chimeraUser));
-
-    const userInfo = document.getElementById("user-info");
-    if (userInfo) {
-      userInfo.textContent = `Signed in as ${chimeraUser.name}`;
-    }
-
-    const startPage = document.getElementById("start-page");
-    const appContainer = document.getElementById("app-container");
-    if (startPage && appContainer) {
-      startPage.style.display = "none";
-      appContainer.style.display = "grid";
-    }
-
-    const cloudNotes = await loadNotesFromCloud();
-    window.dispatchEvent(
-      new CustomEvent("chimera-authenticated", {
-        detail: { user: chimeraUser, notes: cloudNotes }
-      })
-    );
   } catch (err) {
-    console.error("Login error", err);
+    console.warn("Backend auth unavailable; continuing in local mode.", err);
   }
+
+  try {
+    cloudNotes = await loadNotesFromCloud();
+  } catch {
+    cloudNotes = [];
+  }
+
+  window.dispatchEvent(
+    new CustomEvent("chimera-authenticated", {
+      detail: { user: chimeraUser, notes: cloudNotes }
+    })
+  );
 }
 
 export async function loadNotesFromCloud() {
