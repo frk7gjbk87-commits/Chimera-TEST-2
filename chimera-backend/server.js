@@ -17,6 +17,21 @@ const GEMINI_MODEL_FALLBACKS = [
 ];
 const GEMINI_API_VERSIONS = ["v1beta", "v1"];
 const GEMINI_MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_FREE_MAX_NOTES = 200;
+const DEFAULT_FREE_MAX_CHARS_PER_NOTE = 20000;
+const DEFAULT_FREE_MAX_STORAGE_BYTES = 2 * 1024 * 1024;
+const FREE_MAX_NOTES = Math.max(
+  1,
+  Number(process.env.FREE_MAX_NOTES || DEFAULT_FREE_MAX_NOTES)
+);
+const FREE_MAX_CHARS_PER_NOTE = Math.max(
+  1,
+  Number(process.env.FREE_MAX_CHARS_PER_NOTE || DEFAULT_FREE_MAX_CHARS_PER_NOTE)
+);
+const FREE_MAX_STORAGE_BYTES = Math.max(
+  1024,
+  Number(process.env.FREE_MAX_STORAGE_BYTES || DEFAULT_FREE_MAX_STORAGE_BYTES)
+);
 const corsOrigins = (process.env.CORS_ORIGIN || "*")
   .split(",")
   .map((origin) => origin.trim())
@@ -82,6 +97,65 @@ function normalizeNoteDoc(raw = {}, userId) {
     lastModified,
     localId: raw.localId ? String(raw.localId) : null,
     links: Array.isArray(raw.links) ? raw.links : []
+  };
+}
+
+function normalizePlan(plan) {
+  return String(plan || "").toLowerCase() === "pro" ? "pro" : "free";
+}
+
+function getPlanLimits(plan) {
+  if (normalizePlan(plan) === "pro") {
+    return {
+      maxNotes: null,
+      maxCharsPerNote: null,
+      maxStorageBytes: null
+    };
+  }
+
+  return {
+    maxNotes: FREE_MAX_NOTES,
+    maxCharsPerNote: FREE_MAX_CHARS_PER_NOTE,
+    maxStorageBytes: FREE_MAX_STORAGE_BYTES
+  };
+}
+
+function countNoteChars(note) {
+  return String(note?.content || "").length;
+}
+
+function estimateNoteBytes(note) {
+  const links = Array.isArray(note?.links) ? note.links : [];
+  return Buffer.byteLength(
+    JSON.stringify({
+      title: String(note?.title || ""),
+      content: String(note?.content || ""),
+      folder: String(note?.folder || ""),
+      updatedAt: String(note?.updatedAt || ""),
+      lastModified: Number(note?.lastModified || 0),
+      localId: String(note?.localId || ""),
+      links
+    }),
+    "utf8"
+  );
+}
+
+function makeLimitErrorResponse({
+  plan,
+  error,
+  errorCode,
+  limitType,
+  limits,
+  usage
+}) {
+  return {
+    error,
+    errorCode,
+    limitType,
+    requiresPro: normalizePlan(plan) !== "pro",
+    plan: normalizePlan(plan),
+    limits,
+    usage
   };
 }
 
@@ -295,7 +369,15 @@ async function auth(req, res, next) {
 
   try {
     const user = await verifyGoogleToken(token);
-    req.user = user;
+    let plan = "free";
+    if (db) {
+      const account = await db.collection("users").findOne(
+        { userId: user.userId },
+        { projection: { plan: 1 } }
+      );
+      plan = normalizePlan(account?.plan);
+    }
+    req.user = { ...user, plan };
     next();
   } catch (err) {
     return res.status(401).json({ error: "Invalid token" });
@@ -321,21 +403,71 @@ app.post("/auth/google", ensureDb, async (req, res) => {
 
   try {
     const user = await verifyGoogleToken(credential);
+    const nowIso = new Date().toISOString();
 
     // Optional: create user doc if not exists
     await db.collection("users").updateOne(
       { userId: user.userId },
-      { $set: user },
+      {
+        $set: {
+          ...user,
+          lastLoginAt: nowIso
+        },
+        $setOnInsert: {
+          createdAt: nowIso,
+          plan: "free"
+        }
+      },
       { upsert: true }
     );
 
+    const account = await db.collection("users").findOne(
+      { userId: user.userId },
+      { projection: { plan: 1 } }
+    );
+    const plan = normalizePlan(account?.plan);
+    const limits = getPlanLimits(plan);
+
     res.json({
-      user,
-      token: credential
+      user: { ...user, plan },
+      token: credential,
+      plan,
+      limits
     });
   } catch (err) {
     res.status(401).json({ error: "Invalid credential" });
   }
+});
+
+app.get("/billing/status", ensureDb, auth, async (req, res) => {
+  const plan = normalizePlan(req.user.plan);
+  res.json({
+    plan,
+    limits: getPlanLimits(plan)
+  });
+});
+
+app.post("/billing/upgrade", ensureDb, auth, async (req, res) => {
+  const nowIso = new Date().toISOString();
+  await db.collection("users").updateOne(
+    { userId: req.user.userId },
+    {
+      $set: {
+        plan: "pro",
+        proActivatedAt: nowIso
+      },
+      $setOnInsert: {
+        createdAt: nowIso
+      }
+    },
+    { upsert: true }
+  );
+
+  res.json({
+    ok: true,
+    plan: "pro",
+    limits: getPlanLimits("pro")
+  });
 });
 
 // Get notes
@@ -353,39 +485,130 @@ app.get("/notes", ensureDb, auth, async (req, res) => {
 app.post("/notes", ensureDb, auth, async (req, res) => {
   const { id } = req.body;
   const note = normalizeNoteDoc(req.body, req.user.userId);
+  const plan = normalizePlan(req.user.plan);
+  const limits = getPlanLimits(plan);
 
-  if (id) {
-    let objectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      return res.status(400).json({ error: "Invalid note id" });
+  if (plan !== "pro") {
+    const charsInNote = countNoteChars(note);
+    if (charsInNote > limits.maxCharsPerNote) {
+      return res.status(403).json(
+        makeLimitErrorResponse({
+          plan,
+          error: "Oh No! You are out of words on this note.",
+          errorCode: "NOTE_CHAR_LIMIT_EXCEEDED",
+          limitType: "note_chars",
+          limits,
+          usage: {
+            charsInNote
+          }
+        })
+      );
     }
-
-    await db.collection("notes").updateOne(
-      { _id: objectId, userId: req.user.userId },
-      { $set: note }
-    );
-    return res.json({ ok: true, id });
   }
 
-  if (note.localId) {
-    const existing = await db.collection("notes").findOne({
-      userId: req.user.userId,
-      localId: note.localId
-    });
+  const existingById =
+    id && ObjectId.isValid(id)
+      ? await db.collection("notes").findOne({
+          _id: new ObjectId(id),
+          userId: req.user.userId
+        })
+      : null;
 
-    if (existing?._id) {
-      await db.collection("notes").updateOne(
-        { _id: existing._id, userId: req.user.userId },
-        { $set: note }
-      );
-      return res.json({ ok: true, id: existing._id.toString() });
+  const existingByLocalId =
+    !existingById && note.localId
+      ? await db.collection("notes").findOne({
+          userId: req.user.userId,
+          localId: note.localId
+        })
+      : null;
+
+  const existingTarget = existingById || existingByLocalId;
+
+  if (id) {
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid note id" });
     }
+    if (!existingTarget) {
+      return res.status(404).json({ error: "Note not found" });
+    }
+  }
+
+  if (plan !== "pro") {
+    const notes = await db
+      .collection("notes")
+      .find({ userId: req.user.userId })
+      .project({
+        title: 1,
+        content: 1,
+        folder: 1,
+        updatedAt: 1,
+        lastModified: 1,
+        localId: 1,
+        links: 1
+      })
+      .toArray();
+
+    const currentCount = notes.length;
+    const noteCountAfter = existingTarget ? currentCount : currentCount + 1;
+    const currentBytes = notes.reduce(
+      (sum, item) => sum + estimateNoteBytes(item),
+      0
+    );
+    const oldBytes = existingTarget ? estimateNoteBytes(existingTarget) : 0;
+    const newBytes = estimateNoteBytes(note);
+    const storageBytesAfter = currentBytes - oldBytes + newBytes;
+
+    if (noteCountAfter > limits.maxNotes) {
+      return res.status(403).json(
+        makeLimitErrorResponse({
+          plan,
+          error: "Oh No! You are out of notes.",
+          errorCode: "NOTE_COUNT_LIMIT_EXCEEDED",
+          limitType: "notes",
+          limits,
+          usage: {
+            noteCount: noteCountAfter
+          }
+        })
+      );
+    }
+
+    if (storageBytesAfter > limits.maxStorageBytes) {
+      return res.status(403).json(
+        makeLimitErrorResponse({
+          plan,
+          error: "Oh No! You have exceeded all of your storage.",
+          errorCode: "STORAGE_LIMIT_EXCEEDED",
+          limitType: "storage",
+          limits,
+          usage: {
+            storageBytes: storageBytesAfter
+          }
+        })
+      );
+    }
+  }
+
+  if (existingTarget?._id) {
+    await db.collection("notes").updateOne(
+      { _id: existingTarget._id, userId: req.user.userId },
+      { $set: note }
+    );
+    return res.json({
+      ok: true,
+      id: existingTarget._id.toString(),
+      plan,
+      limits
+    });
   }
 
   const result = await db.collection("notes").insertOne(note);
-  res.json({ ok: true, id: result.insertedId.toString() });
+  res.json({
+    ok: true,
+    id: result.insertedId.toString(),
+    plan,
+    limits
+  });
 });
 
 // Delete note

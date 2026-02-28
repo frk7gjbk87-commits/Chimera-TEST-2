@@ -8,17 +8,35 @@
 
 export let chimeraUser = null;
 export let chimeraToken = null;
+export let chimeraPlan = "free";
+export let chimeraLimits = null;
 
 const backendBaseUrl =
   window.CHIMERA_BACKEND_URL ||
   localStorage.getItem("chimeraBackendUrl") ||
-  "http://localhost:4000";
+  (window.location.hostname.includes("github.io")
+    ? "https://chimera-test-2.onrender.com"
+    : "http://localhost:4000");
 
 const MAX_HISTORY_MESSAGES = 12;
 const aiState = {
   initialized: false,
   history: []
 };
+
+function normalizePlan(plan) {
+  return String(plan || "").toLowerCase() === "pro" ? "pro" : "free";
+}
+
+function setPlanState(plan, limits = null) {
+  chimeraPlan = normalizePlan(plan);
+  chimeraLimits = limits || null;
+  window.dispatchEvent(
+    new CustomEvent("chimera-plan-updated", {
+      detail: { plan: chimeraPlan, limits: chimeraLimits }
+    })
+  );
+}
 
 function decodeJwtPayload(token) {
   try {
@@ -55,6 +73,14 @@ function getJsonHeaders() {
     headers.Authorization = `Bearer ${chimeraToken}`;
   }
   return headers;
+}
+
+async function extractErrorPayload(response) {
+  try {
+    return await response.json();
+  } catch {
+    return {};
+  }
 }
 
 function clamp(value, min, max) {
@@ -251,6 +277,8 @@ export async function handleGoogleCredential(credential) {
   showMainApp();
 
   let cloudNotes = [];
+  let authPlan = "free";
+  let authLimits = null;
 
   try {
     const res = await fetch(`${backendBaseUrl}/auth/google`, {
@@ -263,6 +291,8 @@ export async function handleGoogleCredential(credential) {
       const data = await res.json();
       chimeraUser = data.user || chimeraUser;
       chimeraToken = data.token || chimeraToken;
+      authPlan = data.plan || data.user?.plan || "free";
+      authLimits = data.limits || null;
       if (chimeraUser) {
         localStorage.setItem("chimeraUser", JSON.stringify(chimeraUser));
       }
@@ -274,6 +304,8 @@ export async function handleGoogleCredential(credential) {
     console.warn("Backend auth unavailable; continuing in local mode.", err);
   }
 
+  setPlanState(authPlan, authLimits);
+
   try {
     cloudNotes = await loadNotesFromCloud();
   } catch {
@@ -282,7 +314,12 @@ export async function handleGoogleCredential(credential) {
 
   window.dispatchEvent(
     new CustomEvent("chimera-authenticated", {
-      detail: { user: chimeraUser, notes: cloudNotes }
+      detail: {
+        user: chimeraUser,
+        notes: cloudNotes,
+        plan: chimeraPlan,
+        limits: chimeraLimits
+      }
     })
   );
 }
@@ -318,8 +355,27 @@ export async function saveNoteToCloud(note) {
     body: JSON.stringify(note)
   });
 
-  const data = await res.json();
-  return data.id;
+  const data = await extractErrorPayload(res);
+  if (!res.ok) {
+    if (data?.plan || data?.limits) {
+      setPlanState(data.plan, data.limits);
+    }
+
+    const error = new Error(data.error || "Could not save note to cloud.");
+    error.code = data.errorCode || "NOTE_SAVE_FAILED";
+    error.limitType = data.limitType || null;
+    error.requiresPro = Boolean(data.requiresPro);
+    error.plan = data.plan || chimeraPlan;
+    error.limits = data.limits || chimeraLimits;
+    error.usage = data.usage || null;
+    throw error;
+  }
+
+  if (data?.plan || data?.limits) {
+    setPlanState(data.plan, data.limits);
+  }
+
+  return data.id || null;
 }
 
 export async function deleteNoteFromCloud(id) {
@@ -333,6 +389,35 @@ export async function deleteNoteFromCloud(id) {
   });
 
   return res.ok;
+}
+
+export function isProUser() {
+  return normalizePlan(chimeraPlan) === "pro";
+}
+
+export async function upgradeToPro() {
+  if (!chimeraToken) {
+    throw new Error("Sign in first.");
+  }
+
+  const res = await fetch(`${backendBaseUrl}/billing/upgrade`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${chimeraToken}`
+    }
+  });
+
+  const data = await extractErrorPayload(res);
+  if (!res.ok) {
+    throw new Error(data.error || "Upgrade failed.");
+  }
+
+  setPlanState(data.plan, data.limits);
+  return {
+    plan: chimeraPlan,
+    limits: chimeraLimits
+  };
 }
 
 export function initAiTerminal() {

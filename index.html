@@ -603,6 +603,100 @@
             color: var(--accent-color);
         }
 
+        .pro-gated {
+            position: relative;
+        }
+
+        .pro-gated::after {
+            content: "PRO";
+            position: absolute;
+            top: -8px;
+            right: -6px;
+            font-size: 9px;
+            font-weight: 700;
+            padding: 2px 5px;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #111111;
+            letter-spacing: 0.4px;
+        }
+
+        .limit-modal {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.65);
+            z-index: 10020;
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .limit-modal.open {
+            display: flex;
+            opacity: 1;
+        }
+
+        .limit-modal-content {
+            width: min(460px, 92vw);
+            background: #151515;
+            border: 1px solid #303030;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+            transform: translateY(8px) scale(0.98);
+            transition: transform 0.2s ease;
+        }
+
+        .limit-modal.open .limit-modal-content {
+            transform: translateY(0) scale(1);
+        }
+
+        .limit-modal-title {
+            margin: 0 0 8px;
+            color: #f5f5f5;
+            font-size: 22px;
+        }
+
+        .limit-modal-message {
+            margin: 0;
+            color: #d0d0d0;
+            line-height: 1.45;
+        }
+
+        .limit-modal-actions {
+            margin-top: 18px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .limit-modal-actions button {
+            border-radius: 9px;
+            border: 1px solid #4a4a4a;
+            padding: 10px 12px;
+            font-weight: 700;
+            cursor: pointer;
+            min-width: 120px;
+        }
+
+        #btn-upgrade-pro {
+            background: #ffffff;
+            color: #111111;
+        }
+
+        #btn-limit-close {
+            background: #1f1f1f;
+            color: #efefef;
+        }
+
+        .limit-modal-meta {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #a9a9a9;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
@@ -671,6 +765,7 @@
                 <button id="btn-graph-view">Graph View</button>
                 <button id="btn-file-access">Local Folder</button>
                 <button id="btn-collab">P2P Share</button>
+                <button id="btn-export-note">Export</button>
                 <button id="btn-open-ai">🤖 Chimera AI</button>
 
             </div>
@@ -781,6 +876,18 @@
         </div>
     </div>
 
+    <div id="limit-modal" class="limit-modal" role="dialog" aria-modal="true" aria-labelledby="limit-modal-title">
+        <div class="limit-modal-content">
+            <h3 id="limit-modal-title" class="limit-modal-title">Oh No!</h3>
+            <p id="limit-modal-message" class="limit-modal-message">You hit a free plan limit.</p>
+            <p id="limit-modal-meta" class="limit-modal-meta"></p>
+            <div class="limit-modal-actions">
+                <button id="btn-upgrade-pro" type="button">Buy Pro</button>
+                <button id="btn-limit-close" type="button">Not now</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         let currentNoteId = null;
         let notesData = [];
@@ -857,6 +964,132 @@
 
         const persistFolders = () => {
             localStorage.setItem(folderStorageKey, JSON.stringify(Array.from(manualFolders)));
+        };
+
+        let chimeraPlanState = 'free';
+        let chimeraLimitsState = null;
+        const limitModal = document.getElementById('limit-modal');
+        const limitModalMessage = document.getElementById('limit-modal-message');
+        const limitModalMeta = document.getElementById('limit-modal-meta');
+        const upgradeButton = document.getElementById('btn-upgrade-pro');
+        const closeLimitButton = document.getElementById('btn-limit-close');
+
+        const normalizePlanValue = (plan) =>
+            String(plan || '').toLowerCase() === 'pro' ? 'pro' : 'free';
+
+        const isProEnabled = () => normalizePlanValue(chimeraPlanState) === 'pro';
+
+        const updateProFeatureUi = () => {
+            const collabBtn = document.getElementById('btn-collab');
+            const exportBtn = document.getElementById('btn-export-note');
+            const proActive = isProEnabled();
+
+            if (collabBtn) {
+                collabBtn.classList.toggle('pro-gated', !proActive);
+            }
+            if (exportBtn) {
+                exportBtn.classList.toggle('pro-gated', !proActive);
+            }
+        };
+
+        const getLimitMessageForCode = (code) => {
+            switch (code) {
+                case 'NOTE_CHAR_LIMIT_EXCEEDED':
+                    return 'Oh No! You are out of words on this note.';
+                case 'NOTE_COUNT_LIMIT_EXCEEDED':
+                    return 'Oh No! You are out of notes.';
+                case 'STORAGE_LIMIT_EXCEEDED':
+                    return 'Oh No! You have exceeded all of your storage.';
+                default:
+                    return 'Oh No! You hit a free plan limit.';
+            }
+        };
+
+        const buildLimitMetaText = (limits, usage) => {
+            if (!limits || typeof limits !== 'object') return '';
+
+            const chunks = [];
+            if (Number.isFinite(Number(limits.maxCharsPerNote))) {
+                const used = Number(usage?.charsInNote || 0);
+                chunks.push(`Chars/note: ${used}/${limits.maxCharsPerNote}`);
+            }
+            if (Number.isFinite(Number(limits.maxNotes))) {
+                const used = Number(usage?.noteCount || 0);
+                chunks.push(`Notes: ${used}/${limits.maxNotes}`);
+            }
+            if (Number.isFinite(Number(limits.maxStorageBytes))) {
+                const usedBytes = Number(usage?.storageBytes || 0);
+                const usedMb = (usedBytes / (1024 * 1024)).toFixed(2);
+                const capMb = (Number(limits.maxStorageBytes) / (1024 * 1024)).toFixed(2);
+                chunks.push(`Storage: ${usedMb}MB/${capMb}MB`);
+            }
+
+            return chunks.join(' • ');
+        };
+
+        const closeLimitModal = () => {
+            if (!limitModal) return;
+            limitModal.classList.remove('open');
+        };
+
+        const openLimitModal = ({ code = '', message = '', limits = null, usage = null } = {}) => {
+            if (!limitModal || !limitModalMessage) return;
+            const finalMessage = message || getLimitMessageForCode(code);
+            limitModalMessage.textContent = finalMessage;
+
+            if (limitModalMeta) {
+                const meta = buildLimitMetaText(limits || chimeraLimitsState, usage);
+                limitModalMeta.textContent = meta;
+            }
+
+            limitModal.classList.add('open');
+        };
+
+        const setPlanStateLocal = (plan, limits = null) => {
+            chimeraPlanState = normalizePlanValue(plan);
+            chimeraLimitsState = limits || null;
+            updateProFeatureUi();
+        };
+
+        const handleCloudLimitError = (error) => {
+            if (!error || !error.code) return false;
+            if (!String(error.code).includes('LIMIT_EXCEEDED')) return false;
+            setPlanStateLocal(error.plan || 'free', error.limits || null);
+            openLimitModal({
+                code: error.code,
+                message: error.message,
+                limits: error.limits,
+                usage: error.usage
+            });
+            return true;
+        };
+
+        const estimateLocalNoteBytes = (note) => {
+            const payload = {
+                title: String(note?.title || ''),
+                content: String(note?.content || ''),
+                folder: String(note?.folder || ''),
+                updatedAt: String(note?.updatedAt || ''),
+                lastModified: Number(note?.lastModified || 0),
+                localId: String(note?.id || ''),
+                links: Array.isArray(note?.links) ? note.links : []
+            };
+            return new TextEncoder().encode(JSON.stringify(payload)).length;
+        };
+
+        const estimateProjectedStorageBytes = (nextNote) => {
+            const baseline = Array.isArray(notesData) ? notesData : [];
+            const withoutCurrent = baseline.filter(item => item.id !== nextNote.id);
+            const currentBytes = withoutCurrent.reduce((sum, item) => sum + estimateLocalNoteBytes(item), 0);
+            return currentBytes + estimateLocalNoteBytes(nextNote);
+        };
+
+        const requireProAccess = (featureMessage) => {
+            if (isProEnabled()) return true;
+            openLimitModal({
+                message: featureMessage || 'This feature is available on Chimera Pro.'
+            });
+            return false;
         };
 
         // ─────────────────────────────────────────────────
@@ -1210,6 +1443,16 @@
         };
 
         const newNote = async () => {
+            const maxNotes = Number(chimeraLimitsState?.maxNotes);
+            if (!isProEnabled() && Number.isFinite(maxNotes) && notesData.length >= maxNotes) {
+                openLimitModal({
+                    code: 'NOTE_COUNT_LIMIT_EXCEEDED',
+                    limits: chimeraLimitsState,
+                    usage: { noteCount: notesData.length + 1 }
+                });
+                return;
+            }
+
             const noteFolder = document.getElementById('note-folder');
             const chosenFolder = activeFolderFilter !== 'All'
                 ? activeFolderFilter
@@ -1298,6 +1541,30 @@
                 lastModified: Date.now(),
                 links: extractLinks(content)
             });
+
+            const maxChars = Number(chimeraLimitsState?.maxCharsPerNote);
+            if (!isProEnabled() && Number.isFinite(maxChars) && String(updatedNote.content || '').length > maxChars) {
+                openLimitModal({
+                    code: 'NOTE_CHAR_LIMIT_EXCEEDED',
+                    limits: chimeraLimitsState,
+                    usage: { charsInNote: String(updatedNote.content || '').length }
+                });
+                return;
+            }
+
+            const maxStorage = Number(chimeraLimitsState?.maxStorageBytes);
+            if (!isProEnabled() && Number.isFinite(maxStorage)) {
+                const projectedBytes = estimateProjectedStorageBytes(updatedNote);
+                if (projectedBytes > maxStorage) {
+                    openLimitModal({
+                        code: 'STORAGE_LIMIT_EXCEEDED',
+                        limits: chimeraLimitsState,
+                        usage: { storageBytes: projectedBytes }
+                    });
+                    return;
+                }
+            }
+
             manualFolders.add(updatedNote.folder);
             persistFolders();
 
@@ -1320,6 +1587,9 @@
                         await saveNoteToDB(updatedNote);
                     }
                 } catch (error) {
+                    if (handleCloudLimitError(error)) {
+                        return;
+                    }
                     console.error('Cloud save failed:', error);
                 }
             }
@@ -1448,7 +1718,41 @@
         // P2P COLLABORATION (WebRTC)
         // ────────────────────────────────────────────────
         const startP2P = () => {
+            if (!requireProAccess('Collaboration is available on Chimera Pro.')) {
+                return;
+            }
             console.log('P2P collaboration started');
+        };
+
+        const exportCurrentNote = async () => {
+            if (!requireProAccess('Exporting notes is available on Chimera Pro.')) {
+                return;
+            }
+            if (!currentNoteId) {
+                return;
+            }
+
+            const note = await getNoteFromDB(currentNoteId);
+            if (!note) {
+                return;
+            }
+
+            const normalized = withNoteDefaults(note);
+            const title = String(normalized.title || 'Untitled Note');
+            const fileSafeTitle = title
+                .replace(/[<>:\"/\\|?*\x00-\x1F]/g, '-')
+                .replace(/\s+/g, ' ')
+                .trim() || 'untitled-note';
+            const markdown = `# ${title}\n\n${normalized.content || ''}\n`;
+            const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = `${fileSafeTitle}.md`;
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            URL.revokeObjectURL(url);
         };
 
         const handleDataChannelMessage = async (event) => {
@@ -1823,6 +2127,48 @@ const launchApp = () => {
             }
         });
 
+        if (closeLimitButton) {
+            closeLimitButton.addEventListener('click', closeLimitModal);
+        }
+
+        if (limitModal) {
+            limitModal.addEventListener('click', (event) => {
+                if (event.target === limitModal) {
+                    closeLimitModal();
+                }
+            });
+        }
+
+        if (upgradeButton) {
+            upgradeButton.addEventListener('click', async () => {
+                if (typeof window.buyChimeraPro !== 'function') {
+                    openLimitModal({
+                        message: 'Upgrade endpoint is not available yet. Deploy backend latest changes first.'
+                    });
+                    return;
+                }
+
+                const originalLabel = upgradeButton.textContent;
+                upgradeButton.disabled = true;
+                upgradeButton.textContent = 'Processing...';
+                try {
+                    const result = await window.buyChimeraPro();
+                    setPlanStateLocal(result?.plan || 'pro', result?.limits || null);
+                    closeLimitModal();
+                } catch (error) {
+                    const message = error?.message || 'Upgrade failed. Try again.';
+                    openLimitModal({ message });
+                } finally {
+                    upgradeButton.disabled = false;
+                    upgradeButton.textContent = originalLabel;
+                }
+            });
+        }
+
+        window.addEventListener('chimera-plan-updated', (event) => {
+            setPlanStateLocal(event.detail?.plan, event.detail?.limits || null);
+        });
+
         // ────────────────────────────────────────────────
         // INITIALIZATION
         // ────────────────────────────────────────────────
@@ -1841,6 +2187,7 @@ const launchApp = () => {
             document.getElementById('btn-delete-note').onclick = deleteCurrentNote;
             
             document.getElementById('btn-collab').onclick = startP2P;
+            document.getElementById('btn-export-note').onclick = exportCurrentNote;
 
             document.getElementById('btn-file-access').onclick = connectToLocalFolder;
             document.getElementById('btn-wasm-load').onclick = loadWASM;
@@ -1889,10 +2236,13 @@ const launchApp = () => {
 
             window.addEventListener('chimera-authenticated', async (event) => {
                 applyUserContext(event.detail?.user, { force: true });
+                setPlanStateLocal(event.detail?.plan, event.detail?.limits || null);
                 resetUiForAccount();
                 await loadAllNotes();
                 await hydrateCloudNotes(event.detail?.notes);
             });
+
+            updateProFeatureUi();
         };
         window.addEventListener('load', init);
     </script>
@@ -1903,7 +2253,8 @@ const launchApp = () => {
     openAiTerminal,
     saveNoteToCloud,
     loadNotesFromCloud,
-    deleteNoteFromCloud
+    deleteNoteFromCloud,
+    upgradeToPro
   } from "./chimera-frontend.js";
 
   window.__chimeraCredentialHandler = (res) =>
@@ -1919,6 +2270,7 @@ const launchApp = () => {
   window.saveNoteToCloud = saveNoteToCloud;
   window.loadNotesFromCloud = loadNotesFromCloud;
   window.deleteNoteFromCloud = deleteNoteFromCloud;
+  window.buyChimeraPro = upgradeToPro;
 
   initAiTerminal();
 </script>
