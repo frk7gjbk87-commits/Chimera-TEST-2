@@ -9,6 +9,18 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const DB_NAME = process.env.MONGO_DB_NAME || "chimera";
+const MONGO_SERVER_SELECTION_TIMEOUT_MS = Math.max(
+  2000,
+  Number(process.env.MONGO_SERVER_SELECTION_TIMEOUT_MS || 8000)
+);
+const MONGO_CONNECT_TIMEOUT_MS = Math.max(
+  2000,
+  Number(process.env.MONGO_CONNECT_TIMEOUT_MS || 10000)
+);
+const MONGO_SOCKET_TIMEOUT_MS = Math.max(
+  5000,
+  Number(process.env.MONGO_SOCKET_TIMEOUT_MS || 20000)
+);
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GEMINI_MODEL_FALLBACKS = [
   "gemini-2.0-flash",
@@ -72,7 +84,11 @@ async function connectMongo() {
   if (db) {
     return;
   }
-  const mongo = new MongoClient(process.env.MONGO_URI);
+  const mongo = new MongoClient(process.env.MONGO_URI, {
+    serverSelectionTimeoutMS: MONGO_SERVER_SELECTION_TIMEOUT_MS,
+    connectTimeoutMS: MONGO_CONNECT_TIMEOUT_MS,
+    socketTimeoutMS: MONGO_SOCKET_TIMEOUT_MS
+  });
   await mongo.connect();
   db = mongo.db(DB_NAME);
   await db.collection("notes").createIndex(
@@ -1021,10 +1037,13 @@ async function connectMongoWithRetry() {
   }
 }
 
-async function start() {
-  await connectMongoWithRetry();
+function start() {
   app.listen(PORT, () => {
     console.log(`Chimera backend running on port ${PORT}`);
+  });
+  connectMongoWithRetry().catch((error) => {
+    mongoLastError = error?.message || String(error);
+    console.error("Initial MongoDB connection boot failed:", mongoLastError);
   });
 }
 
