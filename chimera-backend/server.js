@@ -486,6 +486,7 @@ async function runDeepSearch({ message, history, noteContext }) {
   const sourcePool = new Set();
   const researchChunks = [];
   const noteBlock = buildNoteContextBlock(noteContext);
+  const hasNoteContext = Boolean(noteContext);
   const researchAngles = [
     "Overview and key definitions",
     "Recent updates and latest developments",
@@ -519,6 +520,10 @@ async function runDeepSearch({ message, history, noteContext }) {
     const pass = await generateWithGemini({
       systemText:
         "You are Chimera AI in Deep Search mode. Research thoroughly, compare sources, and be concise. " +
+        (hasNoteContext
+          ? "An open note context is attached by the app and is directly readable by you. " +
+            "Never claim you cannot see the user's screen, files, or note when this context exists. "
+          : "") +
         "Never mention model providers, vendors, or product names. " +
         "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
       contents,
@@ -558,7 +563,12 @@ async function runDeepSearch({ message, history, noteContext }) {
 
   const finalResult = await generateWithGemini({
     systemText:
-      "You are Chimera AI. Friendly, clear, practical. Never mention model providers, vendors, or product names. " +
+      "You are Chimera AI. Friendly, clear, practical. " +
+      (hasNoteContext
+        ? "An open note context is attached by the app and is directly readable by you. " +
+          "Never claim you cannot access the user's note, files, or screen context. "
+        : "") +
+      "Never mention model providers, vendors, or product names. " +
       "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
     contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
     generationConfig: {
@@ -599,7 +609,9 @@ async function callGemini({ message, history, mode, noteContext }) {
         text:
           `${message}\n\n` +
           (noteBlock
-            ? `${noteBlock}\nUse the note context to suggest improvements when relevant.`
+            ? "Important: The following open note context is provided directly by the app and is available to you now. " +
+              "Do not say you cannot access it.\n\n" +
+              `${noteBlock}\nUse the note context to suggest improvements when relevant.`
             : "")
       }
     ]
@@ -607,7 +619,12 @@ async function callGemini({ message, history, mode, noteContext }) {
 
   const result = await generateWithGemini({
     systemText:
-      "You are Chimera AI. Friendly and practical. Never mention model providers, vendors, or product names. " +
+      "You are Chimera AI. Friendly and practical. " +
+      (safeNoteContext
+        ? "An open note context is attached by the app and is directly readable by you. " +
+          "Never claim you cannot see the note or that the user must paste it again. "
+        : "") +
+      "Never mention model providers, vendors, or product names. " +
       "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
     contents,
     generationConfig: {
