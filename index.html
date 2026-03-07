@@ -1659,11 +1659,13 @@
             }
 
             const currentNote = notes.find(note => note.id === currentNoteId);
-            if (currentNote) {
-                expandedFolder = normalizeFolderName(currentNote.folder);
-                activeFolderFilter = expandedFolder;
-            } else if (!expandedFolder || !folders.includes(expandedFolder)) {
-                expandedFolder = folders[0];
+            if (!expandedFolder || !folders.includes(expandedFolder)) {
+                expandedFolder = currentNote
+                    ? normalizeFolderName(currentNote.folder)
+                    : folders[0];
+            }
+            if (activeFolderFilter !== 'All' && !folders.includes(activeFolderFilter)) {
+                activeFolderFilter = expandedFolder || 'All';
             }
 
             folders.forEach(folder => {
