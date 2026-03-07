@@ -123,13 +123,39 @@ function setAiBusy(isBusy) {
   }
   if (send) {
     send.disabled = isBusy;
-    send.textContent =
-      isBusy && aiState.mode === "deep-search"
-        ? "Researching..."
-        : isBusy
-          ? "Thinking..."
-          : "Send";
+    send.textContent = "Send";
   }
+}
+
+function appendThinkingMessage() {
+  const messages = document.getElementById("chimera-ai-messages");
+  if (!messages) {
+    return null;
+  }
+
+  const messageEl = document.createElement("div");
+  messageEl.className = "chimera-ai-message assistant thinking";
+  const textEl = document.createElement("span");
+  messageEl.appendChild(textEl);
+  messages.appendChild(messageEl);
+  messages.scrollTop = messages.scrollHeight;
+
+  const frames = ["Thinking", "Thinking.", "Thinking..", "Thinking..."];
+  let index = 0;
+  textEl.textContent = frames[index];
+
+  const timer = window.setInterval(() => {
+    index = (index + 1) % frames.length;
+    textEl.textContent = frames[index];
+  }, 320);
+
+  return {
+    stop: () => window.clearInterval(timer),
+    remove: () => {
+      window.clearInterval(timer);
+      messageEl.remove();
+    }
+  };
 }
 
 function normalizeAiMode(mode) {
@@ -331,7 +357,9 @@ async function submitAiMessage() {
   aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
 
   setAiBusy(true);
+  const thinkingMessage = appendThinkingMessage();
   const result = await sendAiMessage(text);
+  thinkingMessage?.remove();
   setAiBusy(false);
 
   const responseText = result?.reply || "No response returned.";
@@ -622,7 +650,9 @@ export function initAiTerminal() {
       aiState.history.push({ role: "user", text: prompt });
       aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
       setAiBusy(true);
+      const thinkingMessage = appendThinkingMessage();
       const result = await sendAiMessage(prompt);
+      thinkingMessage?.remove();
       setAiBusy(false);
 
       const responseText = result?.reply || "No response returned.";

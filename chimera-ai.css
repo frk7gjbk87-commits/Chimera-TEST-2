@@ -162,6 +162,11 @@
   color: #f2f2f2;
 }
 
+.chimera-ai-message.assistant.thinking {
+  opacity: 0.85;
+  font-style: italic;
+}
+
 .chimera-ai-form {
   display: flex;
   gap: 10px;
@@ -206,8 +211,14 @@
 
 #chimera-ai-send:disabled,
 .chimera-ai-input:disabled {
-  opacity: 0.7;
+  opacity: 1;
   cursor: not-allowed;
+}
+
+#chimera-ai-send:disabled {
+  background: #7a7a7a;
+  color: #2a2a2a;
+  border-color: #666666;
 }
 
 @media (max-width: 700px) {
