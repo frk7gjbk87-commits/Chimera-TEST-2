@@ -192,6 +192,13 @@ function sanitizeAiReply(text) {
   return String(text || "").replace(/\b(google|gemini)\b/gi, "Chimera Core");
 }
 
+function removeSourceDetails(text) {
+  return String(text || "")
+    .replace(/\n{0,2}(#+\s*)?sources?[\s\S]*$/i, "")
+    .replace(/https?:\/\/[^\s)]+/gi, "")
+    .trim();
+}
+
 function normalizeAiMode(mode) {
   return String(mode || "").toLowerCase() === "deep-search"
     ? "deep-search"
@@ -507,8 +514,8 @@ async function runDeepSearch({ message, history, noteContext }) {
       "Deep search instructions:\n" +
       "- Search broadly across the web for this angle.\n" +
       "- Read and compare many sources before answering.\n" +
-      "- Return concise findings with direct links.\n" +
-      "- End with 'Sources:' and list every URL you used.\n\n" +
+      "- Return concise findings only.\n" +
+      "- Do not include URLs or source lists in your written answer.\n\n" +
       (noteBlock ? `${noteBlock}\n` : "");
 
     const contents = mapHistoryToContents(history).slice(-4);
@@ -558,8 +565,8 @@ async function runDeepSearch({ message, history, noteContext }) {
     "1) Quick answer (short)\n" +
     "2) Deep summary (clear sections)\n" +
     "3) Action steps\n" +
-    "4) Sources used (numbered list)\n" +
-    "Use plain language and keep it practical.";
+    "Use plain language and keep it practical.\n" +
+    "Important: do not include source names, source sections, or URLs in your output.";
 
   const finalResult = await generateWithGemini({
     systemText:
@@ -579,7 +586,7 @@ async function runDeepSearch({ message, history, noteContext }) {
   });
 
   return {
-    reply: finalResult.reply,
+    reply: removeSourceDetails(finalResult.reply),
     sources
   };
 }
@@ -971,7 +978,7 @@ app.post("/ai/chat", async (req, res) => {
     res.json({
       reply: result?.reply || "",
       mode,
-      sources: Array.isArray(result?.sources) ? result.sources : []
+      sources: []
     });
   } catch (error) {
     console.error("AI chat failed:", error.message);

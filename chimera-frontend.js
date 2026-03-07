@@ -364,13 +364,6 @@ async function submitAiMessage() {
 
   const responseText = result?.reply || "No response returned.";
   appendAiMessage("assistant", responseText);
-  if (Array.isArray(result?.sources) && result.sources.length > 0) {
-    const preview = result.sources.slice(0, 8).join("\n");
-    const sourceMessage =
-      `Sources used: ${result.sources.length}\n` +
-      (preview ? `Top links:\n${preview}` : "");
-    appendAiMessage("assistant", sourceMessage.trim());
-  }
 
   aiState.history.push({ role: "assistant", text: responseText });
   aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
@@ -627,7 +620,7 @@ export function initAiTerminal() {
       setAiMode("deep-search");
       appendAiMessage(
         "assistant",
-        "Deep Search mode enabled. I will research many sources before replying."
+        "Deep Search mode enabled. I will research deeply before replying."
       );
     });
   }
