@@ -106,92 +106,141 @@
         .folder-toolbar {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
             margin: 0 0 14px;
-        }
-
-        #btn-folder-toggle {
-            width: 100%;
-            text-align: left;
-            border: 1px solid var(--border-color);
-            background: #f0f0f0;
-            color: #0f0f0f;
-        }
-
-        .folder-dropdown {
-            max-height: 0;
-            opacity: 0;
-            overflow: hidden;
-            transform: translateY(-6px);
-            transition: max-height 0.28s ease, opacity 0.22s ease, transform 0.22s ease;
-            border: 1px solid transparent;
-            border-radius: 8px;
-            padding: 0 8px;
             background: #181818;
+            border: 1px solid #2f2f2f;
+            border-radius: 10px;
+            padding: 10px;
         }
 
-        .folder-dropdown.open {
-            max-height: 320px;
-            opacity: 1;
-            transform: translateY(0);
-            border-color: #2f2f2f;
-            padding: 8px;
+        .folder-toolbar-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
         }
 
-        .folder-options {
+        .folder-toolbar-title {
+            font-size: 12px;
+            color: #c8c8c8;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+        }
+
+        #folder-tree {
             display: flex;
             flex-direction: column;
             gap: 6px;
-            max-height: 210px;
+            max-height: 280px;
             overflow-y: auto;
         }
 
-        .folder-option-row {
+        .folder-group {
+            border: 1px solid #2d2d2d;
+            border-radius: 8px;
+            background: #121212;
+            overflow: hidden;
+        }
+
+        .folder-header {
             display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 6px;
+            grid-template-columns: 1fr auto auto;
             align-items: center;
+            gap: 8px;
+            padding: 8px 10px;
+            cursor: pointer;
+            background: #151515;
         }
 
-        .folder-option-row.all {
-            grid-template-columns: 1fr;
+        .folder-header:hover {
+            background: #1b1b1b;
         }
 
-        .folder-option-btn {
-            width: 100%;
-            text-align: left;
-            border: 1px solid #3f3f3f;
-            background: #111111;
-            color: #f2f2f2;
+        .folder-header.active {
+            background: #222;
         }
 
-        .folder-option-btn.active {
-            background: #f2f2f2;
-            color: #111111;
-            border-color: #f2f2f2;
+        .folder-header-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #f0f0f0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .folder-header-meta {
+            font-size: 11px;
+            color: #b7b7b7;
+            border: 1px solid #3b3b3b;
+            border-radius: 999px;
+            padding: 2px 8px;
         }
 
         .folder-favorite-btn {
-            border: 1px solid #4a4a4a;
-            background: #222222;
-            color: #efefef;
-            min-width: 96px;
+            width: 28px;
+            height: 28px;
+            border: 1px solid #454545;
+            border-radius: 7px;
+            background: #212121;
+            color: #d9d9d9;
             font-size: 12px;
-            padding: 8px 10px;
+            padding: 0;
         }
 
         .folder-favorite-btn.active {
             background: #f2f2f2;
-            color: #111111;
+            color: #111;
             border-color: #f2f2f2;
         }
 
+        .folder-notes {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transform: translateY(-5px);
+            transition: max-height 0.28s ease, opacity 0.22s ease, transform 0.22s ease;
+            background: #101010;
+        }
+
+        .folder-notes.open {
+            max-height: 340px;
+            opacity: 1;
+            transform: translateY(0);
+            overflow-y: auto;
+        }
+
+        .note-item {
+            padding: 9px 12px 9px 22px;
+            border-top: 1px solid #202020;
+            cursor: pointer;
+            font-size: 13px;
+            color: #e7e7e7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            transition: background 0.15s;
+        }
+
+        .note-item:hover {
+            background: #1a1a1a;
+        }
+
+        .note-item.active {
+            background: #f2f2f2;
+            color: #111;
+            font-weight: 700;
+        }
+
         #btn-new-folder {
-            margin-top: 8px;
-            width: 100%;
             border: 1px solid #4c4c4c;
             background: #232323;
             color: #f2f2f2;
+            padding: 6px 10px;
+            margin-top: 0;
+            width: auto;
         }
 
         .folder-label {
@@ -216,20 +265,6 @@
 
         #folder-filter, #note-folder {
             border: 1px solid var(--border-color);
-        }
-
-        #note-list div {
-            padding: 10px;
-            border-bottom: 1px solid var(--border-color);
-            cursor: pointer;
-            transition: background-color 0.1s;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
-        #note-list div:hover, #note-list .active {
-            background-color: var(--editor-bg);
         }
 
         .editor-view {
@@ -902,18 +937,14 @@
                 <button id="btn-open-ai">Chimera AI</button>
 
             </div>
-            <div class="toolbar">
-                <button id="btn-wasm-load">Load Wasm Core</button>
-            </div>
             <div class="folder-toolbar">
-                <button id="btn-folder-toggle" type="button" aria-expanded="false">Folder: All</button>
-                <div id="folder-dropdown" class="folder-dropdown">
-                    <div id="folder-options" class="folder-options"></div>
+                <div class="folder-toolbar-head">
+                    <span class="folder-toolbar-title">Folders</span>
                     <button id="btn-new-folder" type="button">New Folder</button>
                 </div>
+                <div id="folder-tree"></div>
                 <select id="folder-filter" title="Filter notes by folder" hidden></select>
             </div>
-            <div id="note-list"></div>
         </div>
 
         <main class="editor-view">
@@ -964,7 +995,6 @@
                     <p><strong>Graph View:</strong> Visualize note connections and links.</p>
                     <p><strong>Local Folder:</strong> Connect to your computer's file system.</p>
                     <p><strong>P2P Share:</strong> Collaborate with others peer-to-peer.</p>
-                    <p><strong>Load WASM Core:</strong> Enable high-speed computation features.</p>
                 </div>
                 
                 <div class="help-section">
@@ -1036,7 +1066,7 @@
         let resizer;
         const DEFAULT_FOLDER = 'General';
         let activeFolderFilter = 'All';
-        let folderDropdownOpen = false;
+        let expandedFolder = DEFAULT_FOLDER;
 
         const readStoredUser = () => {
             try {
@@ -1093,7 +1123,7 @@
             manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
             favoriteFolders = new Set(readFolderSeed(folderFavoritesStorageKey));
             activeFolderFilter = 'All';
-            folderDropdownOpen = false;
+            expandedFolder = DEFAULT_FOLDER;
             currentNoteId = null;
             notesData = [];
             return true;
@@ -1537,18 +1567,6 @@
             });
         };
 
-        const setFolderDropdownOpen = (open) => {
-            folderDropdownOpen = Boolean(open);
-            const dropdown = document.getElementById('folder-dropdown');
-            const toggle = document.getElementById('btn-folder-toggle');
-            if (dropdown) {
-                dropdown.classList.toggle('open', folderDropdownOpen);
-            }
-            if (toggle) {
-                toggle.setAttribute('aria-expanded', folderDropdownOpen ? 'true' : 'false');
-            }
-        };
-
         const setNoteFolderChip = (folderName) => {
             const chip = document.getElementById('note-folder-chip');
             if (chip) {
@@ -1556,29 +1574,17 @@
             }
         };
 
-        const handleFolderFilterChange = async () => {
-            renderFolderSelectors();
-            renderNoteList(notesData);
-            const visibleNotes = getFilteredNotes(notesData);
-            if (visibleNotes.length === 0) {
-                clearEditorState('No notes in this folder yet.');
-                return;
-            }
-            if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
-                await loadNote(visibleNotes[0].id);
-            }
-        };
-
         const renderFolderSelectors = () => {
             const filterSelect = document.getElementById('folder-filter');
             const noteFolderSelect = document.getElementById('note-folder');
-            const folderToggle = document.getElementById('btn-folder-toggle');
-            const folderOptions = document.getElementById('folder-options');
-            if (!filterSelect || !noteFolderSelect || !folderToggle || !folderOptions) return;
+            if (!filterSelect || !noteFolderSelect) return;
 
             const folders = listFolders(notesData);
             if (activeFolderFilter !== 'All' && !folders.includes(activeFolderFilter)) {
                 activeFolderFilter = 'All';
+            }
+            if (expandedFolder && !folders.includes(expandedFolder)) {
+                expandedFolder = folders[0] || DEFAULT_FOLDER;
             }
 
             filterSelect.innerHTML = '';
@@ -1611,64 +1617,6 @@
             }
             noteFolderSelect.value = selectedFolder;
             setNoteFolderChip(selectedFolder);
-
-            folderToggle.textContent = activeFolderFilter === 'All'
-                ? 'Folder: All'
-                : `Folder: ${activeFolderFilter}`;
-
-            folderOptions.innerHTML = '';
-            const allRow = document.createElement('div');
-            allRow.className = 'folder-option-row all';
-            const allOptionButton = document.createElement('button');
-            allOptionButton.type = 'button';
-            allOptionButton.className = 'folder-option-btn';
-            allOptionButton.classList.toggle('active', activeFolderFilter === 'All');
-            allOptionButton.textContent = 'All Notes';
-            allOptionButton.onclick = async () => {
-                activeFolderFilter = 'All';
-                filterSelect.value = 'All';
-                await handleFolderFilterChange();
-                setFolderDropdownOpen(false);
-            };
-            allRow.appendChild(allOptionButton);
-            folderOptions.appendChild(allRow);
-
-            folders.forEach(folder => {
-                const row = document.createElement('div');
-                row.className = 'folder-option-row';
-                const optionButton = document.createElement('button');
-                optionButton.type = 'button';
-                optionButton.className = 'folder-option-btn';
-                optionButton.classList.toggle('active', folder === activeFolderFilter);
-                optionButton.textContent = folder;
-                optionButton.onclick = async () => {
-                    activeFolderFilter = folder;
-                    filterSelect.value = folder;
-                    await handleFolderFilterChange();
-                    setFolderDropdownOpen(false);
-                };
-
-                const favoriteButton = document.createElement('button');
-                favoriteButton.type = 'button';
-                favoriteButton.className = 'folder-favorite-btn';
-                const isFavorite = favoriteFolders.has(folder);
-                favoriteButton.classList.toggle('active', isFavorite);
-                favoriteButton.textContent = isFavorite ? 'Unfavorite' : 'Favorite';
-                favoriteButton.onclick = (event) => {
-                    event.stopPropagation();
-                    if (favoriteFolders.has(folder)) {
-                        favoriteFolders.delete(folder);
-                    } else {
-                        favoriteFolders.add(folder);
-                    }
-                    persistFavoriteFolders();
-                    renderFolderSelectors();
-                };
-
-                row.appendChild(optionButton);
-                row.appendChild(favoriteButton);
-                folderOptions.appendChild(row);
-            });
         };
 
         const renderPreviewAndAI = () => {
@@ -1685,30 +1633,126 @@
         };
 
         const resetUiForAccount = () => {
-            const noteList = document.getElementById('note-list');
-            if (noteList) {
-                noteList.innerHTML = '';
+            const folderTree = document.getElementById('folder-tree');
+            if (folderTree) {
+                folderTree.innerHTML = '';
             }
             clearEditorState('Loading notes for this account...');
-            setFolderDropdownOpen(false);
+            expandedFolder = DEFAULT_FOLDER;
             renderFolderSelectors();
         };
 
         const renderNoteList = (notes) => {
-            const listContainer = document.getElementById('note-list');
-            listContainer.innerHTML = '';
+            const folderTree = document.getElementById('folder-tree');
+            if (!folderTree) return;
+            folderTree.innerHTML = '';
 
-            const visibleNotes = getFilteredNotes(notes)
-                .slice()
-                .sort((a, b) => parseTimestamp(b.lastModified) - parseTimestamp(a.lastModified));
+            const folders = listFolders(notes);
+            if (folders.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'folder-header-name';
+                empty.style.opacity = '0.75';
+                empty.style.padding = '8px';
+                empty.textContent = 'No folders yet';
+                folderTree.appendChild(empty);
+                return;
+            }
 
-            visibleNotes.forEach(note => {
-                const div = document.createElement('div');
-                div.textContent = note.title || 'Untitled Note';
-                div.dataset.id = String(note.id);
-                div.classList.toggle('active', note.id === currentNoteId);
-                div.onclick = () => loadNote(note.id);
-                listContainer.appendChild(div);
+            const currentNote = notes.find(note => note.id === currentNoteId);
+            if (currentNote) {
+                expandedFolder = normalizeFolderName(currentNote.folder);
+                activeFolderFilter = expandedFolder;
+            } else if (!expandedFolder || !folders.includes(expandedFolder)) {
+                expandedFolder = folders[0];
+            }
+
+            folders.forEach(folder => {
+                const folderNotes = notes
+                    .filter(note => normalizeFolderName(note.folder) === folder)
+                    .sort((a, b) => parseTimestamp(b.lastModified) - parseTimestamp(a.lastModified));
+
+                const group = document.createElement('div');
+                group.className = 'folder-group';
+
+                const header = document.createElement('div');
+                header.className = 'folder-header';
+                header.classList.toggle('active', activeFolderFilter === folder);
+
+                const name = document.createElement('div');
+                name.className = 'folder-header-name';
+                const isOpen = expandedFolder === folder;
+                name.textContent = `${isOpen ? 'v' : '>'} ${folder}`;
+
+                const count = document.createElement('div');
+                count.className = 'folder-header-meta';
+                count.textContent = String(folderNotes.length);
+
+                const favoriteButton = document.createElement('button');
+                favoriteButton.type = 'button';
+                favoriteButton.className = 'folder-favorite-btn';
+                const isFavorite = favoriteFolders.has(folder);
+                favoriteButton.classList.toggle('active', isFavorite);
+                favoriteButton.textContent = isFavorite ? '*' : '+';
+                favoriteButton.title = isFavorite ? 'Unfavorite folder' : 'Favorite folder';
+                favoriteButton.onclick = (event) => {
+                    event.stopPropagation();
+                    if (favoriteFolders.has(folder)) {
+                        favoriteFolders.delete(folder);
+                    } else {
+                        favoriteFolders.add(folder);
+                    }
+                    persistFavoriteFolders();
+                    renderFolderSelectors();
+                    renderNoteList(notesData);
+                };
+
+                header.appendChild(name);
+                header.appendChild(count);
+                header.appendChild(favoriteButton);
+                header.onclick = async () => {
+                    if (expandedFolder === folder && activeFolderFilter === folder) {
+                        expandedFolder = null;
+                        activeFolderFilter = 'All';
+                    } else {
+                        expandedFolder = folder;
+                        activeFolderFilter = folder;
+                    }
+
+                    const filterSelect = document.getElementById('folder-filter');
+                    if (filterSelect) {
+                        filterSelect.value = activeFolderFilter;
+                    }
+
+                    renderFolderSelectors();
+                    renderNoteList(notesData);
+
+                    const visibleNotes = getFilteredNotes(notesData);
+                    if (visibleNotes.length === 0) {
+                        clearEditorState('No notes in this folder yet.');
+                        return;
+                    }
+                    if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                        await loadNote(visibleNotes[0].id);
+                    }
+                };
+
+                const notesContainer = document.createElement('div');
+                notesContainer.className = 'folder-notes';
+                notesContainer.classList.toggle('open', isOpen);
+
+                folderNotes.forEach(note => {
+                    const item = document.createElement('div');
+                    item.className = 'note-item';
+                    item.classList.toggle('active', note.id === currentNoteId);
+                    item.dataset.id = String(note.id);
+                    item.textContent = note.title || 'Untitled Note';
+                    item.onclick = () => loadNote(note.id);
+                    notesContainer.appendChild(item);
+                });
+
+                group.appendChild(header);
+                group.appendChild(notesContainer);
+                folderTree.appendChild(group);
             });
         };
 
@@ -1826,8 +1870,8 @@
                 setNoteFolderChip(folderValue);
             }
 
-            document.querySelectorAll('#note-list div').forEach(el => el.classList.remove('active'));
-            const activeNoteElement = document.querySelector(`#note-list div[data-id="${CSS.escape(String(id))}"]`);
+            document.querySelectorAll('.note-item').forEach(el => el.classList.remove('active'));
+            const activeNoteElement = document.querySelector(`.note-item[data-id="${CSS.escape(String(id))}"]`);
             if (activeNoteElement) {
                 activeNoteElement.classList.add('active');
             }
@@ -1937,62 +1981,6 @@
             renderPreviewAndAI();
             await saveCurrentNote();
         }, 500);
-
-        // ────────────────────────────────────────────────
-        // WASM CORE
-        // ────────────────────────────────────────────────
-        let wasmInstance = null;
-        
-        const WASM_DATA_B64 = 'AGFzbQEAAAABBwFgAn9/AX8DAgEABwcBA2FkZAAACgkBBwAgACABags=';
-
-        const base64ToArrayBuffer = (base64) => {
-            const binary_string = atob(base64);
-            const len = binary_string.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-                bytes[i] = binary_string.charCodeAt(i);
-            }
-            return bytes.buffer;
-        }
-        
-        const loadWASM = async () => {
-            const wasmButton = document.getElementById('btn-wasm-load');
-            const statusIndicator = document.getElementById('ai-sentiment');
-            try {
-                wasmButton.textContent = 'Loading WASM...';
-                statusIndicator.textContent = 'AI: Waiting on WASM...'; 
-
-                const bytes = base64ToArrayBuffer(WASM_DATA_B64);
-                
-                const importObject = {
-                    env: {
-                        memory: new WebAssembly.Memory({ initial: 256 }),
-                        abort: (ptr, filename, line, column) => {
-                            console.error('WASM Aborted:', { ptr, filename, line, column });
-                        }
-                    }
-                };
-
-                const module = await WebAssembly.instantiate(bytes, importObject);
-                wasmInstance = module.instance.exports;
-                
-                wasmButton.textContent = 'WASM Core Loaded';
-                statusIndicator.textContent = 'AI: Ready'; 
-                console.log('WASM Core Loaded for high-speed tasks.');
-                
-                if (wasmInstance.add) {
-                     const testResult = wasmInstance.add(2, 3);
-                     console.log('WASM Test: add(2, 3) =', testResult);
-                }
-               
-            } catch (e) {
-                const errorMessage = e.message || String(e);
-                console.error('WASM loading failed:', e);
-                wasmButton.textContent = 'WASM Failed';
-                statusIndicator.textContent = `AI: WASM Error: ${errorMessage.substring(0, 40)}...`;
-            }
-        };
-
         // ────────────────────────────────────────────────
         // IN-BROWSER AI (TensorFlow.js)
         // ────────────────────────────────────────────────
@@ -2306,8 +2294,6 @@ const launchApp = () => {
             resizer = document.getElementById('resizer');
             const folderFilter = document.getElementById('folder-filter');
             const noteFolder = document.getElementById('note-folder');
-            const folderToggle = document.getElementById('btn-folder-toggle');
-            const folderDropdown = document.getElementById('folder-dropdown');
             
             if(noteEditor && notePreview && resizer) {
                 setupResizer();
@@ -2320,7 +2306,6 @@ const launchApp = () => {
             document.getElementById('btn-export-note').onclick = exportCurrentNote;
 
             document.getElementById('btn-file-access').onclick = connectToLocalFolder;
-            document.getElementById('btn-wasm-load').onclick = loadWASM;
             
             document.getElementById('btn-graph-view').onclick = () => toggleGraphView(true);
             document.getElementById('btn-new-folder').onclick = async () => {
@@ -2330,6 +2315,7 @@ const launchApp = () => {
                 manualFolders.add(folderName);
                 persistFolders();
                 activeFolderFilter = folderName;
+                expandedFolder = folderName;
                 renderFolderSelectors();
                 if (folderFilter) folderFilter.value = folderName;
                 if (noteFolder) {
@@ -2342,8 +2328,11 @@ const launchApp = () => {
                     noteFolder.value = folderName;
                 }
                 setNoteFolderChip(folderName);
-                setFolderDropdownOpen(false);
-                await handleFolderFilterChange();
+                renderNoteList(notesData);
+                const visibleNotes = getFilteredNotes(notesData);
+                if (visibleNotes.length > 0 && (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId))) {
+                    await loadNote(visibleNotes[0].id);
+                }
                 if (currentNoteId) {
                     await saveCurrentNote();
                 }
@@ -2352,26 +2341,22 @@ const launchApp = () => {
             if (folderFilter) {
                 folderFilter.onchange = async (event) => {
                     activeFolderFilter = event.target.value;
-                    await handleFolderFilterChange();
+                    expandedFolder = activeFolderFilter === 'All' ? null : activeFolderFilter;
+                    renderFolderSelectors();
+                    renderNoteList(notesData);
+                    const visibleNotes = getFilteredNotes(notesData);
+                    if (visibleNotes.length === 0) {
+                        clearEditorState('No notes in this folder yet.');
+                        return;
+                    }
+                    if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                        await loadNote(visibleNotes[0].id);
+                    }
                 };
             }
 
             if (noteFolder) {
                 noteFolder.onchange = updatePreviewAndAI;
-            }
-
-            if (folderToggle && folderDropdown) {
-                folderToggle.onclick = () => {
-                    setFolderDropdownOpen(!folderDropdownOpen);
-                };
-
-                document.addEventListener('click', (event) => {
-                    if (!folderDropdownOpen) return;
-                    const target = event.target;
-                    if (!folderDropdown.contains(target) && !folderToggle.contains(target)) {
-                        setFolderDropdownOpen(false);
-                    }
-                });
             }
 
             document.getElementById('note-title').oninput = updatePreviewAndAI;
@@ -2424,6 +2409,8 @@ const launchApp = () => {
 
 </body>
 </html>
+
+
 
 
 
