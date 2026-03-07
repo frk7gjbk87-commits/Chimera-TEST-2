@@ -146,6 +146,17 @@
             overflow-y: auto;
         }
 
+        .folder-option-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 6px;
+            align-items: center;
+        }
+
+        .folder-option-row.all {
+            grid-template-columns: 1fr;
+        }
+
         .folder-option-btn {
             width: 100%;
             text-align: left;
@@ -155,6 +166,21 @@
         }
 
         .folder-option-btn.active {
+            background: #f2f2f2;
+            color: #111111;
+            border-color: #f2f2f2;
+        }
+
+        .folder-favorite-btn {
+            border: 1px solid #4a4a4a;
+            background: #222222;
+            color: #efefef;
+            min-width: 96px;
+            font-size: 12px;
+            padding: 8px 10px;
+        }
+
+        .folder-favorite-btn.active {
             background: #f2f2f2;
             color: #111111;
             border-color: #f2f2f2;
@@ -794,6 +820,16 @@
             text-decoration: underline;
         }
 
+        #btn-delete-note-confirm {
+            background: #ffffff;
+            color: #111111;
+        }
+
+        #btn-delete-note-cancel {
+            background: #1f1f1f;
+            color: #efefef;
+        }
+
         @keyframes fadeIn {
             from { opacity: 0; }
             to { opacity: 1; }
@@ -971,6 +1007,17 @@
         </div>
     </div>
 
+    <div id="delete-note-modal" class="limit-modal" role="dialog" aria-modal="true" aria-labelledby="delete-note-modal-title">
+        <div class="limit-modal-content">
+            <h3 id="delete-note-modal-title" class="limit-modal-title">Delete Note?</h3>
+            <p id="delete-note-modal-message" class="limit-modal-message">This note will be permanently deleted.</p>
+            <div class="limit-modal-actions">
+                <button id="btn-delete-note-confirm" type="button">Delete Note</button>
+                <button id="btn-delete-note-cancel" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         let currentNoteId = null;
         let notesData = [];
@@ -1013,6 +1060,7 @@
 
         const buildDbName = (userKey) => `ChimeraDB_${userKey}`;
         const buildFolderStorageKey = (userKey) => `chimeraFolders:${userKey}`;
+        const buildFolderFavoritesStorageKey = (userKey) => `chimeraFolderFavorites:${userKey}`;
 
         const readFolderSeed = (storageKey) => {
             try {
@@ -1027,7 +1075,9 @@
         let activeUserKey = resolveUserKey();
         dbName = buildDbName(activeUserKey);
         let folderStorageKey = buildFolderStorageKey(activeUserKey);
+        let folderFavoritesStorageKey = buildFolderFavoritesStorageKey(activeUserKey);
         let manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
+        let favoriteFolders = new Set(readFolderSeed(folderFavoritesStorageKey));
 
         const applyUserContext = (user = null, options = {}) => {
             const { force = false } = options;
@@ -1039,7 +1089,9 @@
             activeUserKey = nextUserKey;
             dbName = buildDbName(activeUserKey);
             folderStorageKey = buildFolderStorageKey(activeUserKey);
+            folderFavoritesStorageKey = buildFolderFavoritesStorageKey(activeUserKey);
             manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
+            favoriteFolders = new Set(readFolderSeed(folderFavoritesStorageKey));
             activeFolderFilter = 'All';
             folderDropdownOpen = false;
             currentNoteId = null;
@@ -1051,6 +1103,10 @@
             localStorage.setItem(folderStorageKey, JSON.stringify(Array.from(manualFolders)));
         };
 
+        const persistFavoriteFolders = () => {
+            localStorage.setItem(folderFavoritesStorageKey, JSON.stringify(Array.from(favoriteFolders)));
+        };
+
         let chimeraPlanState = 'free';
         let chimeraLimitsState = null;
         const limitModal = document.getElementById('limit-modal');
@@ -1060,6 +1116,11 @@
         const supportEmailLink = document.getElementById('pro-support-email-link');
         const upgradeButton = document.getElementById('btn-upgrade-pro');
         const closeLimitButton = document.getElementById('btn-limit-close');
+        const deleteNoteModal = document.getElementById('delete-note-modal');
+        const deleteNoteModalMessage = document.getElementById('delete-note-modal-message');
+        const confirmDeleteButton = document.getElementById('btn-delete-note-confirm');
+        const cancelDeleteButton = document.getElementById('btn-delete-note-cancel');
+        let pendingDeleteResolver = null;
         let supportEmailState = 'aaravkedeveloper@gmail.com';
 
         const normalizePlanValue = (plan) =>
@@ -1143,6 +1204,37 @@
 
             limitModal.classList.add('open');
         };
+
+        const closeDeleteNoteModal = (confirmed = false) => {
+            if (!deleteNoteModal) {
+                if (pendingDeleteResolver) {
+                    const resolve = pendingDeleteResolver;
+                    pendingDeleteResolver = null;
+                    resolve(Boolean(confirmed));
+                }
+                return;
+            }
+
+            deleteNoteModal.classList.remove('open');
+            if (pendingDeleteResolver) {
+                const resolve = pendingDeleteResolver;
+                pendingDeleteResolver = null;
+                resolve(Boolean(confirmed));
+            }
+        };
+
+        const requestDeleteConfirmation = (noteTitle) =>
+            new Promise((resolve) => {
+                if (!deleteNoteModal || !deleteNoteModalMessage) {
+                    resolve(window.confirm(`Delete "${noteTitle}" permanently?`));
+                    return;
+                }
+
+                pendingDeleteResolver = resolve;
+                const safeTitle = String(noteTitle || 'Untitled Note');
+                deleteNoteModalMessage.textContent = `This will permanently delete "${safeTitle}". This action cannot be undone.`;
+                deleteNoteModal.classList.add('open');
+            });
 
         const setPlanStateLocal = (plan, limits = null) => {
             chimeraPlanState = normalizePlanValue(plan);
@@ -1422,7 +1514,27 @@
                 folders.forEach(folder => manualFolders.add(folder));
                 persistFolders();
             }
-            return Array.from(folders).sort((a, b) => a.localeCompare(b));
+
+            const normalizedFavorites = new Set(
+                Array.from(favoriteFolders).map(folder => normalizeFolderName(folder))
+            );
+            const validFavorites = new Set(
+                Array.from(normalizedFavorites).filter(folder => folders.has(folder))
+            );
+            if (
+                validFavorites.size !== favoriteFolders.size ||
+                Array.from(validFavorites).some(folder => !favoriteFolders.has(folder))
+            ) {
+                favoriteFolders = validFavorites;
+                persistFavoriteFolders();
+            }
+
+            return Array.from(folders).sort((a, b) => {
+                const aFav = favoriteFolders.has(a) ? 1 : 0;
+                const bFav = favoriteFolders.has(b) ? 1 : 0;
+                if (aFav !== bFav) return bFav - aFav;
+                return a.localeCompare(b);
+            });
         };
 
         const setFolderDropdownOpen = (open) => {
@@ -1505,20 +1617,57 @@
                 : `Folder: ${activeFolderFilter}`;
 
             folderOptions.innerHTML = '';
-            const choices = ['All', ...folders];
-            choices.forEach(folder => {
+            const allRow = document.createElement('div');
+            allRow.className = 'folder-option-row all';
+            const allOptionButton = document.createElement('button');
+            allOptionButton.type = 'button';
+            allOptionButton.className = 'folder-option-btn';
+            allOptionButton.classList.toggle('active', activeFolderFilter === 'All');
+            allOptionButton.textContent = 'All Notes';
+            allOptionButton.onclick = async () => {
+                activeFolderFilter = 'All';
+                filterSelect.value = 'All';
+                await handleFolderFilterChange();
+                setFolderDropdownOpen(false);
+            };
+            allRow.appendChild(allOptionButton);
+            folderOptions.appendChild(allRow);
+
+            folders.forEach(folder => {
+                const row = document.createElement('div');
+                row.className = 'folder-option-row';
                 const optionButton = document.createElement('button');
                 optionButton.type = 'button';
                 optionButton.className = 'folder-option-btn';
                 optionButton.classList.toggle('active', folder === activeFolderFilter);
-                optionButton.textContent = folder === 'All' ? 'All Notes' : folder;
+                optionButton.textContent = folder;
                 optionButton.onclick = async () => {
                     activeFolderFilter = folder;
                     filterSelect.value = folder;
                     await handleFolderFilterChange();
                     setFolderDropdownOpen(false);
                 };
-                folderOptions.appendChild(optionButton);
+
+                const favoriteButton = document.createElement('button');
+                favoriteButton.type = 'button';
+                favoriteButton.className = 'folder-favorite-btn';
+                const isFavorite = favoriteFolders.has(folder);
+                favoriteButton.classList.toggle('active', isFavorite);
+                favoriteButton.textContent = isFavorite ? 'Unfavorite' : 'Favorite';
+                favoriteButton.onclick = (event) => {
+                    event.stopPropagation();
+                    if (favoriteFolders.has(folder)) {
+                        favoriteFolders.delete(folder);
+                    } else {
+                        favoriteFolders.add(folder);
+                    }
+                    persistFavoriteFolders();
+                    renderFolderSelectors();
+                };
+
+                row.appendChild(optionButton);
+                row.appendChild(favoriteButton);
+                folderOptions.appendChild(row);
             });
         };
 
@@ -1638,6 +1787,10 @@
             if (!currentNoteId) return;
             const noteToDelete = currentNoteId;
             const note = await getNoteFromDB(noteToDelete);
+            if (!note) return;
+            const noteWithDefaults = withNoteDefaults(note);
+            const confirmed = await requestDeleteConfirmation(noteWithDefaults.title);
+            if (!confirmed) return;
             currentNoteId = null;
 
             if (note?.remoteId && typeof window.deleteNoteFromCloud === 'function') {
@@ -2074,6 +2227,26 @@ const launchApp = () => {
             limitModal.addEventListener('click', (event) => {
                 if (event.target === limitModal) {
                     closeLimitModal();
+                }
+            });
+        }
+
+        if (confirmDeleteButton) {
+            confirmDeleteButton.addEventListener('click', () => {
+                closeDeleteNoteModal(true);
+            });
+        }
+
+        if (cancelDeleteButton) {
+            cancelDeleteButton.addEventListener('click', () => {
+                closeDeleteNoteModal(false);
+            });
+        }
+
+        if (deleteNoteModal) {
+            deleteNoteModal.addEventListener('click', (event) => {
+                if (event.target === deleteNoteModal) {
+                    closeDeleteNoteModal(false);
                 }
             });
         }
