@@ -17,6 +17,14 @@ const GEMINI_MODEL_FALLBACKS = [
 ];
 const GEMINI_API_VERSIONS = ["v1beta", "v1"];
 const GEMINI_MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEEP_SEARCH_TARGET_SOURCES = Math.max(
+  10,
+  Number(process.env.DEEP_SEARCH_TARGET_SOURCES || 50)
+);
+const DEEP_SEARCH_MAX_PASSES = Math.max(
+  2,
+  Number(process.env.DEEP_SEARCH_MAX_PASSES || 8)
+);
 const DEFAULT_FREE_MAX_NOTES = 200;
 const DEFAULT_FREE_MAX_CHARS_PER_NOTE = 20000;
 const DEFAULT_FREE_MAX_STORAGE_BYTES = 2 * 1024 * 1024;
@@ -184,6 +192,46 @@ function sanitizeAiReply(text) {
   return String(text || "").replace(/\b(google|gemini)\b/gi, "Chimera Core");
 }
 
+function normalizeAiMode(mode) {
+  return String(mode || "").toLowerCase() === "deep-search"
+    ? "deep-search"
+    : "chat";
+}
+
+function sanitizeNoteContext(noteContext) {
+  if (!noteContext || typeof noteContext !== "object") {
+    return null;
+  }
+
+  const title = String(noteContext.title || "").trim().slice(0, 160);
+  const folder = String(noteContext.folder || "").trim().slice(0, 120);
+  const content = String(noteContext.content || "").trim().slice(0, 9000);
+
+  if (!title && !content) {
+    return null;
+  }
+
+  return {
+    title: title || "Untitled Note",
+    folder: folder || "General",
+    content
+  };
+}
+
+function buildNoteContextBlock(noteContext) {
+  const safeContext = sanitizeNoteContext(noteContext);
+  if (!safeContext) {
+    return "";
+  }
+
+  return (
+    "Open note context (use this for grounded suggestions):\n" +
+    `Title: ${safeContext.title}\n` +
+    `Folder: ${safeContext.folder}\n` +
+    `Content:\n${safeContext.content || "(empty)"}\n`
+  );
+}
+
 function mapHistoryToContents(history) {
   if (!Array.isArray(history)) {
     return [];
@@ -219,6 +267,67 @@ function rankGeminiModel(model) {
   if (name.includes("2.0")) score += 4;
   if (name.includes("lite")) score -= 2;
   return score;
+}
+
+function cleanUrl(url) {
+  const value = String(url || "").trim();
+  if (!value || !/^https?:\/\//i.test(value)) {
+    return "";
+  }
+  return value.replace(/[)\].,;!?]+$/g, "");
+}
+
+function collectUrlsDeep(node, bucket) {
+  if (!node) {
+    return;
+  }
+
+  if (typeof node === "string") {
+    const cleaned = cleanUrl(node);
+    if (cleaned) {
+      bucket.add(cleaned);
+    }
+    return;
+  }
+
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectUrlsDeep(item, bucket));
+    return;
+  }
+
+  if (typeof node === "object") {
+    for (const [key, value] of Object.entries(node)) {
+      if (
+        (key.toLowerCase() === "url" || key.toLowerCase() === "uri") &&
+        typeof value === "string"
+      ) {
+        const cleaned = cleanUrl(value);
+        if (cleaned) {
+          bucket.add(cleaned);
+        }
+      }
+      collectUrlsDeep(value, bucket);
+    }
+  }
+}
+
+function extractUrlsFromText(text) {
+  const matches = String(text || "").match(/https?:\/\/[^\s)]+/gi) || [];
+  const urls = new Set();
+  matches.forEach((item) => {
+    const cleaned = cleanUrl(item);
+    if (cleaned) {
+      urls.add(cleaned);
+    }
+  });
+  return Array.from(urls);
+}
+
+function extractGeminiSources(data, fallbackReply = "") {
+  const urls = new Set();
+  collectUrlsDeep(data, urls);
+  extractUrlsFromText(fallbackReply).forEach((url) => urls.add(url));
+  return Array.from(urls);
 }
 
 async function fetchAvailableGeminiModels(apiKey) {
@@ -262,17 +371,7 @@ async function fetchAvailableGeminiModels(apiKey) {
   return cachedGeminiModels;
 }
 
-async function callGemini({ message, history }) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error("Missing GEMINI_API_KEY in environment");
-  }
-
-  const contents = mapHistoryToContents(history);
-  contents.push({
-    role: "user",
-    parts: [{ text: message }]
-  });
-
+async function resolveGeminiModels() {
   const configuredModels = Array.from(
     new Set(
       [GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS]
@@ -283,68 +382,245 @@ async function callGemini({ message, history }) {
   const discoveredModels = await fetchAvailableGeminiModels(
     process.env.GEMINI_API_KEY
   );
-  const models = Array.from(
-    new Set([...configuredModels, ...discoveredModels])
-  )
+  return Array.from(new Set([...configuredModels, ...discoveredModels]))
     .sort((a, b) => rankGeminiModel(b) - rankGeminiModel(a))
     .slice(0, 10);
+}
+
+function buildToolVariants(useSearchTool) {
+  if (!useSearchTool) {
+    return [null];
+  }
+  return [
+    [{ google_search: {} }],
+    [{ google_search_retrieval: {} }],
+    null
+  ];
+}
+
+function getReplyTextFromGeminiData(data) {
+  return (data?.candidates?.[0]?.content?.parts || [])
+    .map((part) => String(part?.text || ""))
+    .join("\n")
+    .trim();
+}
+
+async function generateWithGemini({
+  systemText,
+  contents,
+  generationConfig = {},
+  useSearchTool = false
+}) {
+  const models = await resolveGeminiModels();
+  const toolVariants = buildToolVariants(useSearchTool);
   let lastError;
 
   for (const model of models) {
     for (const apiVersion of GEMINI_API_VERSIONS) {
-      try {
-        const url =
-          `https://generativelanguage.googleapis.com/${apiVersion}/models/` +
-          `${encodeURIComponent(model)}:generateContent?key=` +
-          `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
+      for (const tools of toolVariants) {
+        try {
+          const url =
+            `https://generativelanguage.googleapis.com/${apiVersion}/models/` +
+            `${encodeURIComponent(model)}:generateContent?key=` +
+            `${encodeURIComponent(process.env.GEMINI_API_KEY)}`;
 
-        const response = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+          const payload = {
             systemInstruction: {
-              parts: [
-                {
-                  text:
-                    "You are Chimera AI. Never mention model providers, vendors, or product names. " +
-                    "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'"
-                }
-              ]
+              parts: [{ text: systemText }]
             },
             generationConfig: {
               temperature: 0.7,
-              maxOutputTokens: 700
+              maxOutputTokens: 700,
+              ...generationConfig
             },
             contents
-          })
-        });
+          };
 
-        if (!response.ok) {
-          const errorBody = (await response.text()).slice(0, 500);
-          throw new Error(
-            `Model ${model} @ ${apiVersion} failed (${response.status}): ${errorBody}`
+          if (Array.isArray(tools) && tools.length > 0) {
+            payload.tools = tools;
+          }
+
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          if (!response.ok) {
+            const errorBody = (await response.text()).slice(0, 500);
+            throw new Error(
+              `Model ${model} @ ${apiVersion} failed (${response.status}): ${errorBody}`
+            );
+          }
+
+          const data = await response.json();
+          const reply = getReplyTextFromGeminiData(data);
+          if (!reply) {
+            throw new Error(
+              `Model ${model} @ ${apiVersion} returned empty output`
+            );
+          }
+
+          const sources = extractGeminiSources(data, reply);
+          return {
+            reply: sanitizeAiReply(reply),
+            sources,
+            model,
+            apiVersion
+          };
+        } catch (error) {
+          lastError = error;
+          console.error(
+            `AI model attempt failed (${model} @ ${apiVersion}):`,
+            error.message
           );
         }
-
-        const data = await response.json();
-        const reply = (data?.candidates?.[0]?.content?.parts || [])
-          .map((part) => String(part?.text || ""))
-          .join("\n")
-          .trim();
-
-        if (!reply) {
-          throw new Error(`Model ${model} @ ${apiVersion} returned empty output`);
-        }
-
-        return sanitizeAiReply(reply);
-      } catch (error) {
-        lastError = error;
-        console.error(`AI model attempt failed (${model} @ ${apiVersion}):`, error.message);
       }
     }
   }
 
   throw lastError || new Error("No AI model could produce a reply");
+}
+
+async function runDeepSearch({ message, history, noteContext }) {
+  const sourcePool = new Set();
+  const researchChunks = [];
+  const noteBlock = buildNoteContextBlock(noteContext);
+  const researchAngles = [
+    "Overview and key definitions",
+    "Recent updates and latest developments",
+    "Data, stats, and factual numbers",
+    "Expert opinions and analysis",
+    "How-to guidance and practical implementation",
+    "Risks, caveats, and opposing viewpoints",
+    "Case studies and real examples",
+    "Tools, products, and alternatives landscape"
+  ];
+  const passCount = Math.min(DEEP_SEARCH_MAX_PASSES, researchAngles.length);
+
+  for (let index = 0; index < passCount; index += 1) {
+    const angle = researchAngles[index];
+    const passPrompt =
+      `Research request: ${message}\n` +
+      `Research angle ${index + 1}/${passCount}: ${angle}\n\n` +
+      "Deep search instructions:\n" +
+      "- Search broadly across the web for this angle.\n" +
+      "- Read and compare many sources before answering.\n" +
+      "- Return concise findings with direct links.\n" +
+      "- End with 'Sources:' and list every URL you used.\n\n" +
+      (noteBlock ? `${noteBlock}\n` : "");
+
+    const contents = mapHistoryToContents(history).slice(-4);
+    contents.push({
+      role: "user",
+      parts: [{ text: passPrompt }]
+    });
+
+    const pass = await generateWithGemini({
+      systemText:
+        "You are Chimera AI in Deep Search mode. Research thoroughly, compare sources, and be concise. " +
+        "Never mention model providers, vendors, or product names. " +
+        "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
+      contents,
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 900
+      },
+      useSearchTool: true
+    });
+
+    researchChunks.push(
+      `Pass ${index + 1} - ${angle}\n${pass.reply}`.slice(0, 3800)
+    );
+    pass.sources.forEach((url) => sourcePool.add(url));
+
+    if (sourcePool.size >= DEEP_SEARCH_TARGET_SOURCES) {
+      break;
+    }
+  }
+
+  const sources = Array.from(sourcePool);
+  const sourceListForPrompt = sources
+    .slice(0, 120)
+    .map((url, idx) => `${idx + 1}. ${url}`)
+    .join("\n");
+  const finalPrompt =
+    `User question: ${message}\n\n` +
+    (noteBlock ? `${noteBlock}\n` : "") +
+    `Research passes:\n${researchChunks.join("\n\n")}\n\n` +
+    `Source pool (${sources.length} links):\n${sourceListForPrompt}\n\n` +
+    "Now generate:\n" +
+    "1) Quick answer (short)\n" +
+    "2) Deep summary (clear sections)\n" +
+    "3) Action steps\n" +
+    "4) Sources used (numbered list)\n" +
+    "Use plain language and keep it practical.";
+
+  const finalResult = await generateWithGemini({
+    systemText:
+      "You are Chimera AI. Friendly, clear, practical. Never mention model providers, vendors, or product names. " +
+      "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
+    contents: [{ role: "user", parts: [{ text: finalPrompt }] }],
+    generationConfig: {
+      temperature: 0.4,
+      maxOutputTokens: 1500
+    },
+    useSearchTool: false
+  });
+
+  return {
+    reply: finalResult.reply,
+    sources
+  };
+}
+
+async function callGemini({ message, history, mode, noteContext }) {
+  if (!process.env.GEMINI_API_KEY) {
+    throw new Error("Missing GEMINI_API_KEY in environment");
+  }
+
+  const normalizedMode = normalizeAiMode(mode);
+  const safeNoteContext = sanitizeNoteContext(noteContext);
+
+  if (normalizedMode === "deep-search") {
+    return runDeepSearch({
+      message,
+      history,
+      noteContext: safeNoteContext
+    });
+  }
+
+  const noteBlock = buildNoteContextBlock(safeNoteContext);
+  const contents = mapHistoryToContents(history);
+  contents.push({
+    role: "user",
+    parts: [
+      {
+        text:
+          `${message}\n\n` +
+          (noteBlock
+            ? `${noteBlock}\nUse the note context to suggest improvements when relevant.`
+            : "")
+      }
+    ]
+  });
+
+  const result = await generateWithGemini({
+    systemText:
+      "You are Chimera AI. Friendly and practical. Never mention model providers, vendors, or product names. " +
+      "If asked about internals, say only: 'I run on Chimera's private intelligence stack.'",
+    contents,
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 900
+    },
+    useSearchTool: false
+  });
+
+  return {
+    reply: result.reply,
+    sources: []
+  };
 }
 
 // Verify Google ID token
@@ -666,14 +942,20 @@ app.delete("/notes/:id", ensureDb, auth, async (req, res) => {
 app.post("/ai/chat", async (req, res) => {
   const message = String(req.body?.message || "").trim();
   const history = Array.isArray(req.body?.history) ? req.body.history : [];
+  const mode = normalizeAiMode(req.body?.mode);
+  const noteContext = sanitizeNoteContext(req.body?.noteContext);
 
   if (!message) {
     return res.status(400).json({ error: "Missing message" });
   }
 
   try {
-    const reply = await callGemini({ message, history });
-    res.json({ reply });
+    const result = await callGemini({ message, history, mode, noteContext });
+    res.json({
+      reply: result?.reply || "",
+      mode,
+      sources: Array.isArray(result?.sources) ? result.sources : []
+    });
   } catch (error) {
     console.error("AI chat failed:", error.message);
     res.status(503).json({

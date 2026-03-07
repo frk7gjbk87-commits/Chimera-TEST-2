@@ -104,15 +104,68 @@
         }
 
         .folder-toolbar {
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            align-items: center;
+            display: flex;
+            flex-direction: column;
             gap: 8px;
             margin: 0 0 14px;
         }
 
-        #folder-filter, #note-folder {
+        #btn-folder-toggle {
+            width: 100%;
+            text-align: left;
             border: 1px solid var(--border-color);
+            background: #f0f0f0;
+            color: #0f0f0f;
+        }
+
+        .folder-dropdown {
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            transform: translateY(-6px);
+            transition: max-height 0.28s ease, opacity 0.22s ease, transform 0.22s ease;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            padding: 0 8px;
+            background: #181818;
+        }
+
+        .folder-dropdown.open {
+            max-height: 320px;
+            opacity: 1;
+            transform: translateY(0);
+            border-color: #2f2f2f;
+            padding: 8px;
+        }
+
+        .folder-options {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 210px;
+            overflow-y: auto;
+        }
+
+        .folder-option-btn {
+            width: 100%;
+            text-align: left;
+            border: 1px solid #3f3f3f;
+            background: #111111;
+            color: #f2f2f2;
+        }
+
+        .folder-option-btn.active {
+            background: #f2f2f2;
+            color: #111111;
+            border-color: #f2f2f2;
+        }
+
+        #btn-new-folder {
+            margin-top: 8px;
+            width: 100%;
+            border: 1px solid #4c4c4c;
+            background: #232323;
+            color: #f2f2f2;
         }
 
         .folder-label {
@@ -128,6 +181,15 @@
             text-transform: uppercase;
             letter-spacing: 0.4px;
             white-space: nowrap;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            padding: 6px 12px;
+            background: #1a1a1a;
+            color: #efefef;
+        }
+
+        #folder-filter, #note-folder {
+            border: 1px solid var(--border-color);
         }
 
         #note-list div {
@@ -795,22 +857,25 @@
             <h2>Chimera</h2>
 
             <div class="toolbar">
-                <button id="btn-help" title="Help - Learn all controls">❓ Help</button>
+                <button id="btn-help" title="Help - Learn all controls">Help</button>
                 <button id="btn-new-note">New Note</button>
                 <button id="btn-graph-view">Graph View</button>
                 <button id="btn-file-access">Local Folder</button>
                 <button id="btn-collab">P2P Share</button>
                 <button id="btn-export-note">Export</button>
-                <button id="btn-open-ai">🤖 Chimera AI</button>
+                <button id="btn-open-ai">Chimera AI</button>
 
             </div>
             <div class="toolbar">
                 <button id="btn-wasm-load">Load Wasm Core</button>
             </div>
             <div class="folder-toolbar">
-                <label class="folder-label" for="folder-filter">Filter</label>
-                <select id="folder-filter" title="Filter notes by folder"></select>
-                <button id="btn-new-folder" type="button">+ Folder</button>
+                <button id="btn-folder-toggle" type="button" aria-expanded="false">Folder: All</button>
+                <div id="folder-dropdown" class="folder-dropdown">
+                    <div id="folder-options" class="folder-options"></div>
+                    <button id="btn-new-folder" type="button">New Folder</button>
+                </div>
+                <select id="folder-filter" title="Filter notes by folder" hidden></select>
             </div>
             <div id="note-list"></div>
         </div>
@@ -818,9 +883,9 @@
         <main class="editor-view">
             <div class="editor-toolbar">
                 <input type="text" id="note-title" placeholder="Note Title">
-                <label class="folder-label-inline" for="note-folder">Note Folder</label>
-                <select id="note-folder" title="Folder for this note"></select>
-                <button id="btn-delete-note">🗑️ Delete</button>
+                <span id="note-folder-chip" class="folder-label-inline">Folder: General</span>
+                <select id="note-folder" title="Folder for this note" hidden></select>
+                <button id="btn-delete-note">Delete</button>
             </div>
             <div id="editor-container">
                 <!-- Left Panel: Resizable Editor -->
@@ -840,7 +905,7 @@
         <div class="help-modal-content">
             <div class="help-modal-header">
                 <h2>📖 Chimera Help</h2>
-                <button id="help-close-btn" class="help-close-btn">✕</button>
+                <button id="help-close-btn" class="help-close-btn">X</button>
             </div>
             <div class="help-modal-body">
                 <div class="help-section">
@@ -924,6 +989,7 @@
         let resizer;
         const DEFAULT_FOLDER = 'General';
         let activeFolderFilter = 'All';
+        let folderDropdownOpen = false;
 
         const readStoredUser = () => {
             try {
@@ -975,6 +1041,7 @@
             folderStorageKey = buildFolderStorageKey(activeUserKey);
             manualFolders = new Set([DEFAULT_FOLDER, ...readFolderSeed(folderStorageKey)]);
             activeFolderFilter = 'All';
+            folderDropdownOpen = false;
             currentNoteId = null;
             notesData = [];
             return true;
@@ -1358,10 +1425,44 @@
             return Array.from(folders).sort((a, b) => a.localeCompare(b));
         };
 
+        const setFolderDropdownOpen = (open) => {
+            folderDropdownOpen = Boolean(open);
+            const dropdown = document.getElementById('folder-dropdown');
+            const toggle = document.getElementById('btn-folder-toggle');
+            if (dropdown) {
+                dropdown.classList.toggle('open', folderDropdownOpen);
+            }
+            if (toggle) {
+                toggle.setAttribute('aria-expanded', folderDropdownOpen ? 'true' : 'false');
+            }
+        };
+
+        const setNoteFolderChip = (folderName) => {
+            const chip = document.getElementById('note-folder-chip');
+            if (chip) {
+                chip.textContent = `Folder: ${normalizeFolderName(folderName)}`;
+            }
+        };
+
+        const handleFolderFilterChange = async () => {
+            renderFolderSelectors();
+            renderNoteList(notesData);
+            const visibleNotes = getFilteredNotes(notesData);
+            if (visibleNotes.length === 0) {
+                clearEditorState('No notes in this folder yet.');
+                return;
+            }
+            if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
+                await loadNote(visibleNotes[0].id);
+            }
+        };
+
         const renderFolderSelectors = () => {
             const filterSelect = document.getElementById('folder-filter');
             const noteFolderSelect = document.getElementById('note-folder');
-            if (!filterSelect || !noteFolderSelect) return;
+            const folderToggle = document.getElementById('btn-folder-toggle');
+            const folderOptions = document.getElementById('folder-options');
+            if (!filterSelect || !noteFolderSelect || !folderToggle || !folderOptions) return;
 
             const folders = listFolders(notesData);
             if (activeFolderFilter !== 'All' && !folders.includes(activeFolderFilter)) {
@@ -1397,6 +1498,28 @@
                 noteFolderSelect.appendChild(option);
             }
             noteFolderSelect.value = selectedFolder;
+            setNoteFolderChip(selectedFolder);
+
+            folderToggle.textContent = activeFolderFilter === 'All'
+                ? 'Folder: All'
+                : `Folder: ${activeFolderFilter}`;
+
+            folderOptions.innerHTML = '';
+            const choices = ['All', ...folders];
+            choices.forEach(folder => {
+                const optionButton = document.createElement('button');
+                optionButton.type = 'button';
+                optionButton.className = 'folder-option-btn';
+                optionButton.classList.toggle('active', folder === activeFolderFilter);
+                optionButton.textContent = folder === 'All' ? 'All Notes' : folder;
+                optionButton.onclick = async () => {
+                    activeFolderFilter = folder;
+                    filterSelect.value = folder;
+                    await handleFolderFilterChange();
+                    setFolderDropdownOpen(false);
+                };
+                folderOptions.appendChild(optionButton);
+            });
         };
 
         const renderPreviewAndAI = () => {
@@ -1418,6 +1541,7 @@
                 noteList.innerHTML = '';
             }
             clearEditorState('Loading notes for this account...');
+            setFolderDropdownOpen(false);
             renderFolderSelectors();
         };
 
@@ -1546,6 +1670,7 @@
                     noteFolderSelect.appendChild(option);
                 }
                 noteFolderSelect.value = folderValue;
+                setNoteFolderChip(folderValue);
             }
 
             document.querySelectorAll('#note-list div').forEach(el => el.classList.remove('active'));
@@ -1720,14 +1845,14 @@
         // ────────────────────────────────────────────────
         const loadAISentimentModel = async () => {
             try {
-                document.getElementById('ai-sentiment').textContent = '🧠 AI: Downloading...';
+                document.getElementById('ai-sentiment').textContent = 'AI: Downloading...';
                 await tf.ready;
                 sentimentModel = await tf.loadLayersModel(MODEL_URL);
-                document.getElementById('btn-ai-load').textContent = '🧠 AI Model Loaded';
-                document.getElementById('ai-sentiment').textContent = '🧠 AI: Ready';
+                document.getElementById('btn-ai-load').textContent = 'AI Model Loaded';
+                document.getElementById('ai-sentiment').textContent = 'AI: Ready';
             } catch (error) {
-                document.getElementById('ai-sentiment').textContent = '🧠 AI: Failed';
-                document.getElementById('btn-ai-load').textContent = '❌ AI Failed';
+                document.getElementById('ai-sentiment').textContent = 'AI: Failed';
+                document.getElementById('btn-ai-load').textContent = 'AI Failed';
                 console.error('AI Model loading failed:', error);
             }
         };
@@ -1735,7 +1860,7 @@
         const runSentimentAnalysis = async (text) => {
             if (!sentimentModel) return;
             if (text.length < 50) {
-                document.getElementById('ai-sentiment').textContent = '🧠 AI: Needs 50 chars.';
+                document.getElementById('ai-sentiment').textContent = 'AI: Needs 50 chars.';
                 return;
             }
 
@@ -1743,7 +1868,7 @@
             const score = (hash % 1000) / 1000; 
             
             let sentiment = score > 0.65 ? 'Positive 😊' : (score < 0.35 ? 'Negative 😠' : 'Neutral 😐');
-            document.getElementById('ai-sentiment').textContent = `🧠 AI: ${sentiment} (${(score * 100).toFixed(0)}%)`;
+            document.getElementById('ai-sentiment').textContent = `AI: ${sentiment} (${(score * 100).toFixed(0)}%)`;
         };
         
         // ────────────────────────────────────────────────
@@ -1819,10 +1944,10 @@
             try {
                 const dirHandle = await window.showDirectoryPicker();
                 console.log(`Connected to ${dirHandle.name}. Notes can now be saved as local files.`);
-                document.getElementById('btn-file-access').textContent = '📁 Folder Connected';
+                document.getElementById('btn-file-access').textContent = 'Folder Connected';
             } catch (err) {
                 console.error('File System Access Error:', err);
-                document.getElementById('btn-file-access').textContent = '❌ Folder Failed';
+                document.getElementById('btn-file-access').textContent = 'Folder Failed';
             }
         };
 
@@ -2008,6 +2133,8 @@ const launchApp = () => {
             resizer = document.getElementById('resizer');
             const folderFilter = document.getElementById('folder-filter');
             const noteFolder = document.getElementById('note-folder');
+            const folderToggle = document.getElementById('btn-folder-toggle');
+            const folderDropdown = document.getElementById('folder-dropdown');
             
             if(noteEditor && notePreview && resizer) {
                 setupResizer();
@@ -2032,7 +2159,18 @@ const launchApp = () => {
                 activeFolderFilter = folderName;
                 renderFolderSelectors();
                 if (folderFilter) folderFilter.value = folderName;
-                if (noteFolder) noteFolder.value = folderName;
+                if (noteFolder) {
+                    if (![...noteFolder.options].some(option => option.value === folderName)) {
+                        const option = document.createElement('option');
+                        option.value = folderName;
+                        option.textContent = folderName;
+                        noteFolder.appendChild(option);
+                    }
+                    noteFolder.value = folderName;
+                }
+                setNoteFolderChip(folderName);
+                setFolderDropdownOpen(false);
+                await handleFolderFilterChange();
                 if (currentNoteId) {
                     await saveCurrentNote();
                 }
@@ -2041,20 +2179,26 @@ const launchApp = () => {
             if (folderFilter) {
                 folderFilter.onchange = async (event) => {
                     activeFolderFilter = event.target.value;
-                    renderNoteList(notesData);
-                    const visibleNotes = getFilteredNotes(notesData);
-                    if (visibleNotes.length === 0) {
-                        clearEditorState('No notes in this folder yet.');
-                        return;
-                    }
-                    if (!currentNoteId || !visibleNotes.some(note => note.id === currentNoteId)) {
-                        await loadNote(visibleNotes[0].id);
-                    }
+                    await handleFolderFilterChange();
                 };
             }
 
             if (noteFolder) {
                 noteFolder.onchange = updatePreviewAndAI;
+            }
+
+            if (folderToggle && folderDropdown) {
+                folderToggle.onclick = () => {
+                    setFolderDropdownOpen(!folderDropdownOpen);
+                };
+
+                document.addEventListener('click', (event) => {
+                    if (!folderDropdownOpen) return;
+                    const target = event.target;
+                    if (!folderDropdown.contains(target) && !folderToggle.contains(target)) {
+                        setFolderDropdownOpen(false);
+                    }
+                });
             }
 
             document.getElementById('note-title').oninput = updatePreviewAndAI;
@@ -2107,6 +2251,8 @@ const launchApp = () => {
 
 </body>
 </html>
+
+
 
 
 

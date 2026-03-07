@@ -22,7 +22,8 @@ const backendBaseUrl =
 const MAX_HISTORY_MESSAGES = 12;
 const aiState = {
   initialized: false,
-  history: []
+  history: [],
+  mode: "chat"
 };
 
 function normalizePlan(plan) {
@@ -122,7 +123,60 @@ function setAiBusy(isBusy) {
   }
   if (send) {
     send.disabled = isBusy;
-    send.textContent = isBusy ? "Thinking..." : "Send";
+    send.textContent =
+      isBusy && aiState.mode === "deep-search"
+        ? "Researching..."
+        : isBusy
+          ? "Thinking..."
+          : "Send";
+  }
+}
+
+function normalizeAiMode(mode) {
+  return mode === "deep-search" ? "deep-search" : "chat";
+}
+
+function getOpenNoteContext() {
+  const titleInput = document.getElementById("note-title");
+  const editor = document.getElementById("note-editor");
+  const folderSelect = document.getElementById("note-folder");
+  const title = String(titleInput?.value || "").trim();
+  const content = String(editor?.value || "").trim();
+  const folder = String(folderSelect?.value || "").trim();
+
+  if (!title && !content) {
+    return null;
+  }
+
+  return {
+    title: title || "Untitled Note",
+    content,
+    folder: folder || "General"
+  };
+}
+
+function setAiMode(mode) {
+  aiState.mode = normalizeAiMode(mode);
+  const chatBtn = document.getElementById("chimera-ai-mode-chat");
+  const deepBtn = document.getElementById("chimera-ai-mode-deep");
+  const badge = document.getElementById("chimera-ai-mode-badge");
+  const input = document.getElementById("chimera-ai-input");
+
+  if (chatBtn && deepBtn) {
+    chatBtn.classList.toggle("active", aiState.mode === "chat");
+    deepBtn.classList.toggle("active", aiState.mode === "deep-search");
+  }
+
+  if (badge) {
+    badge.textContent =
+      aiState.mode === "deep-search" ? "Deep Search Mode" : "Chat Mode";
+  }
+
+  if (input) {
+    input.placeholder =
+      aiState.mode === "deep-search"
+        ? "Ask for deep research. Example: Compare top coding laptops for school."
+        : "Ask Chimera AI anything...";
   }
 }
 
@@ -193,6 +247,14 @@ function ensureAiPanel() {
           <button id="chimera-ai-close" type="button">Close</button>
         </div>
       </div>
+      <div class="chimera-ai-mode-row">
+        <div class="chimera-ai-mode-switch">
+          <button id="chimera-ai-mode-chat" type="button" class="active">Chat</button>
+          <button id="chimera-ai-mode-deep" type="button">Deep Search</button>
+        </div>
+        <button id="chimera-ai-note-suggest" type="button">Suggest from Open Note</button>
+      </div>
+      <div id="chimera-ai-mode-badge" class="chimera-ai-mode-badge">Chat Mode</div>
       <div id="chimera-ai-messages" class="chimera-ai-messages"></div>
       <form id="chimera-ai-form" class="chimera-ai-form">
         <textarea
@@ -213,13 +275,16 @@ function ensureAiPanel() {
 }
 
 async function sendAiMessage(message) {
+  const noteContext = getOpenNoteContext();
   try {
     const response = await fetch(`${backendBaseUrl}/ai/chat`, {
       method: "POST",
       headers: getJsonHeaders(),
       body: JSON.stringify({
         message,
-        history: aiState.history
+        history: aiState.history,
+        mode: aiState.mode,
+        noteContext
       })
     });
 
@@ -228,18 +293,23 @@ async function sendAiMessage(message) {
         .json()
         .catch(() => ({ error: "" }));
       if (response.status === 503) {
-        return (
-          errorPayload.error ||
-          "AI service is waking up or misconfigured on the backend."
-        );
+        return {
+          reply:
+            errorPayload.error ||
+            "AI service is waking up or misconfigured on the backend.",
+          sources: []
+        };
       }
-      return errorPayload.error || "AI request failed.";
+      return { reply: errorPayload.error || "AI request failed.", sources: [] };
     }
 
     const data = await response.json();
-    return data.reply || "No response returned.";
+    return {
+      reply: data.reply || "No response returned.",
+      sources: Array.isArray(data.sources) ? data.sources : []
+    };
   } catch (error) {
-    return "Could not reach the backend.";
+    return { reply: "Could not reach the backend.", sources: [] };
   }
 }
 
@@ -261,11 +331,20 @@ async function submitAiMessage() {
   aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
 
   setAiBusy(true);
-  const reply = await sendAiMessage(text);
+  const result = await sendAiMessage(text);
   setAiBusy(false);
 
-  appendAiMessage("assistant", reply);
-  aiState.history.push({ role: "assistant", text: reply });
+  const responseText = result?.reply || "No response returned.";
+  appendAiMessage("assistant", responseText);
+  if (Array.isArray(result?.sources) && result.sources.length > 0) {
+    const preview = result.sources.slice(0, 8).join("\n");
+    const sourceMessage =
+      `Sources used: ${result.sources.length}\n` +
+      (preview ? `Top links:\n${preview}` : "");
+    appendAiMessage("assistant", sourceMessage.trim());
+  }
+
+  aiState.history.push({ role: "assistant", text: responseText });
   aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
 }
 
@@ -462,7 +541,12 @@ export function initAiTerminal() {
   const input = document.getElementById("chimera-ai-input");
   const close = document.getElementById("chimera-ai-close");
   const clear = document.getElementById("chimera-ai-clear");
+  const chatModeButton = document.getElementById("chimera-ai-mode-chat");
+  const deepModeButton = document.getElementById("chimera-ai-mode-deep");
+  const suggestButton = document.getElementById("chimera-ai-note-suggest");
   const toolbarButton = document.getElementById("btn-open-ai");
+
+  setAiMode("chat");
 
   if (form) {
     form.addEventListener("submit", async (event) => {
@@ -500,6 +584,51 @@ export function initAiTerminal() {
         "assistant",
         "Chat cleared. Ready for your next prompt."
       );
+    });
+  }
+
+  if (chatModeButton) {
+    chatModeButton.addEventListener("click", () => {
+      setAiMode("chat");
+      appendAiMessage("assistant", "Chat mode enabled.");
+    });
+  }
+
+  if (deepModeButton) {
+    deepModeButton.addEventListener("click", () => {
+      setAiMode("deep-search");
+      appendAiMessage(
+        "assistant",
+        "Deep Search mode enabled. I will research many sources before replying."
+      );
+    });
+  }
+
+  if (suggestButton) {
+    suggestButton.addEventListener("click", async () => {
+      const noteContext = getOpenNoteContext();
+      if (!noteContext || !noteContext.content) {
+        appendAiMessage(
+          "assistant",
+          "Open a note with content first, then use note suggestions."
+        );
+        return;
+      }
+
+      setAiMode("chat");
+      const prompt =
+        "Read my current note and give practical suggestions to improve clarity, structure, and next actions.";
+      appendAiMessage("user", prompt);
+      aiState.history.push({ role: "user", text: prompt });
+      aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
+      setAiBusy(true);
+      const result = await sendAiMessage(prompt);
+      setAiBusy(false);
+
+      const responseText = result?.reply || "No response returned.";
+      appendAiMessage("assistant", responseText);
+      aiState.history.push({ role: "assistant", text: responseText });
+      aiState.history = aiState.history.slice(-MAX_HISTORY_MESSAGES);
     });
   }
 
